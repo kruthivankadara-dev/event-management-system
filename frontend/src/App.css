@@ -16,6 +16,10 @@
   box-shadow: 0 24px 80px rgb(0 0 0 / 25%);
 }
 
+.register-card:has(.event-section) {
+  max-width: 760px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -80,6 +84,50 @@
   color: #f5f6fb;
 }
 
+.register-card textarea {
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 12px 13px;
+  border: 1px solid #343d57;
+  border-radius: 9px;
+  outline: none;
+  background: #0d1427;
+  color: #f5f6fb;
+  resize: vertical;
+}
+
+.register-card textarea:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgb(124 58 237 / 18%);
+}
+
+.event-section {
+  margin-top: 30px;
+  padding-top: 26px;
+  border-top: 1px solid #29314a;
+}
+
+.event-section h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.event-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.event-grid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.event-grid input {
+  min-width: 0;
+}
+
 .register-card input::placeholder {
   color: #707b96;
 }
@@ -139,5 +187,9 @@
 @media (max-width: 480px) {
   .register-card {
     padding: 26px 20px;
+  }
+
+  .event-grid {
+    grid-template-columns: 1fr;
   }
 }
