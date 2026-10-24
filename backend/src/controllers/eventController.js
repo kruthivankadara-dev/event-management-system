@@ -1,6 +1,9 @@
 const pool = require("../config/db");
 const { randomUUID } = require("crypto");
-const { validateEvent } = require("../validators/eventValidators");
+const {
+  validateEvent,
+  validateEventSearchQuery
+} = require("../validators/eventValidators");
 
 function toMysqlDateTime(value) {
   return value.replace("T", " ").slice(0, 19);
@@ -90,16 +93,61 @@ async function createEvent(req, res, next) {
 }
 
 
+function escapeLikeValue(value) {
+  return value.replace(/[=%_]/g, character => `=${character}`);
+}
+
 async function getEvents(req, res, next) {
+  const parsed = validateEventSearchQuery(req.query);
+
+  if (!parsed.success) {
+    const errors = parsed.error.issues.map(issue => ({
+      field: issue.path[0] || "query",
+      message: issue.message
+    }));
+
+    return res.status(400).json({
+      success: false,
+      message: errors[0]?.message || "Please check the search filters.",
+      errors
+    });
+  }
+
+  const { q, category, date, venue } = parsed.data;
+  const conditions = ["status = 'SCHEDULED'"];
+  const values = [];
+
+  if (q) {
+    const keyword = `%${escapeLikeValue(q)}%`;
+    conditions.push("(title LIKE ? ESCAPE '=' OR description LIKE ? ESCAPE '=')");
+    values.push(keyword, keyword);
+  }
+
+  if (category) {
+    conditions.push("category = ?");
+    values.push(category);
+  }
+
+  if (date) {
+    conditions.push("start_datetime >= ? AND start_datetime < DATE_ADD(?, INTERVAL 1 DAY)");
+    values.push(date, date);
+  }
+
+  if (venue) {
+    conditions.push("venue LIKE ? ESCAPE '='");
+    values.push(`%${escapeLikeValue(venue)}%`);
+  }
+
   try {
     const [events] = await pool.execute(
       `SELECT event_id, title, description, category, venue,
         start_datetime, end_datetime, capacity,
         registration_deadline, image_url, registration_url,
         created_by, created_at, status
-        
- FROM events
- ORDER BY start_datetime ASC`
+       FROM events
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY start_datetime ASC`,
+      values
     );
 
     return res.status(200).json({
@@ -202,4 +250,3 @@ module.exports = {
   updateEvent,
   cancelEvent
 };
-
