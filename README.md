@@ -1,84 +1,148 @@
-# Event Management System (EMS)
+Event Management System (EMS)
+A web-based Event Management System supporting authentication, role-based access control, event creation, registration links, event editing, postponement, and cancellation.
+Implemented Features
+EMS-F-002 — Authentication and Role-Based Access Control
+- User registration and login.
+- Password hashing using bcrypt.
+- Token-based authentication using JWT.
+- Roles: ATTENDEE, ORGANIZER, ADMIN, and EVENT_STAFF.
+- Admin interface to view registered users and assign supported roles.
+- Protected backend routes using authentication and role-authorization middleware.
+EMS-F-003 — Event Creation and Registration
+- Users with ADMIN or ORGANIZER roles can create events.
+- Event details include title, description, category, venue, start/end date and time, capacity, registration deadline, image URL or uploaded image, and an optional registration-form URL.
+- Event data is stored in MySQL.
+- Authenticated users can view events.
+- Attendees can select Register on an event card to open its external registration form when a URL is provided.
+EMS-F-004 — Event Editing, Postponement, and Cancellation
+- Authorized event creators can edit scheduled events.
+- Events can be postponed by updating their date or time through the edit workflow.
+- Authorized users can cancel scheduled events.
+- Updated event details and status are reflected in the application.
+- Backend authorization must be enforced; frontend button visibility alone is not a security control.
+The project team reports that these workflows have been tested in the local development environment.
+Technology Stack
+- Frontend: React, Vite, JavaScript, CSS
+- Backend: Node.js, Express
+- Database: MySQL
+- Authentication: JWT and bcrypt
+- Validation: Zod (event request validation)
+- Tools: VS Code, npm, MySQL Workbench
+Project Structure
+event-management-system/
+├── backend/
+│   ├── src/
+│   │   ├── app.js
+│   │   ├── server.js
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── routes/
+│   │   └── validators/
+│   ├── test/
+│   ├── package.json
+│   └── .env                 # Create locally; do not commit
+├── database/
+│   ├── schema.sql
+│   └── migrations/
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── App.css
+│   │   └── index.css
+│   ├── package.json
+│   └── .env.example
+└── README.md
+Folder contents may differ slightly depending on the current branch.
+Prerequisites
+- Node.js and npm
+- MySQL Server
+- Git (optional, for version control)
+Local Setup
+1. Clone the repository
+git clone https://github.com/se-ems-team8/event-management-system.git
+cd event-management-system
+If the repository is already cloned, open its project directory in VS Code.
+2. Set up the database
+Start MySQL and run the repository's schema and migration SQL files using MySQL Workbench or the MySQL command line.
 
-EMS-F-001: user registration starter implementation.
+The application database is:
+CREATE DATABASE IF NOT EXISTS event_management_system;
+Ensure the schema creates the users, roles, and user_roles tables, and the events migration creates the events table. The events table must include registration_url to support registration links. If this column is missing from an existing database, run:
+USE event_management_system;
+ALTER TABLE events ADD COLUMN registration_url VARCHAR(2048) NULL;
+Do not run the ALTER TABLE statement if the column already exists.
 
-## Requirements
-
-- Node.js 18 or newer
-- MySQL 8
-- npm
-
-## 1. Database
-
-Copy your existing schema file to `database/schema.sql`, then execute it in MySQL Workbench. Verify that the database `event_management_system` and the tables `users`, `roles`, and `user_roles` exist, and that `ATTENDEE` is present in `roles`.
-
-The registration controller expects the schema columns:
-
-- `users.user_id` (UUID-compatible character column)
-- `users.full_name`
-- `users.email` (unique)
-- `users.password_hash`
-- `roles.role_id`
-- `roles.role_name`
-- `user_roles.user_id`
-- `user_roles.role_id`
-
-If your schema uses different column names, update the SQL in `backend/src/controllers/authController.js` to match it.
-
-## 2. Backend setup
-
-```bash
+Ensure the roles table contains:
+INSERT IGNORE INTO roles (role_name)
+VALUES ('ATTENDEE'), ('ADMIN'), ('ORGANIZER'), ('EVENT_STAFF');
+Use the repository's schema and migrations as the source of truth for complete table definitions and constraints.
+3. Configure backend environment variables
+Create backend/.env locally. Use the exact variable names expected by backend/src/config/db.js and the authentication code in your checkout. Example values:
+PORT=5000
+DB_HOST=localhost
+DB_USER=your_mysql_username
+DB_PASSWORD=your_mysql_password
+DB_NAME=event_management_system
+JWT_SECRET=replace_with_a_long_random_secret
+These names are examples; verify the exact names in your project files. Never commit .env or real credentials.
+4. Install backend dependencies and start the API
+From the project root:
 cd backend
 npm install
-```
+npm start
+If package.json does not define a start script, use the script listed in that file (for example, a development script).
 
-Copy `.env.example` to `.env`, then update `DB_USER` and `DB_PASSWORD` to match your local MySQL credentials. Do not commit `.env`.
-
-Start the API:
-
-```bash
-npm run dev
-```
-
-Health check: `http://localhost:5000/api/health`
-
-Registration endpoint: `POST http://localhost:5000/api/v1/auth/register`
-
-Example JSON:
-
-```json
-{
-  "name": "Test Attendee",
-  "email": "attendee1@example.com",
-  "password": "StrongPass123!"
-}
-```
-
-## 3. Frontend setup
-
-In a second terminal:
-
-```bash
+The current local setup uses port 5000 for the backend API.
+5. Install and start the frontend
+Open a second terminal from the project root:
 cd frontend
 npm install
-```
-
-Copy `.env.example` to `.env` if you need to change the API URL, then run:
-
-```bash
+The frontend uses VITE_API_URL when configured; otherwise, the current default is:
+http://localhost:5000/api/v1
+If needed, create frontend/.env:
+VITE_API_URL=http://localhost:5000/api/v1
+Start the frontend:
 npm run dev
-```
+Open the local URL printed by Vite (the current setup uses http://localhost:5173).
+API Routes
+The following event routes are part of the current implementation:
+Method	Endpoint	Access	Purpose
+GET	/api/v1/events	Authenticated users	Retrieve events
+POST	/api/v1/events	ADMIN or ORGANIZER	Create an event
 
-Open the local URL printed by Vite, usually `http://localhost:5173`.
 
-## 4. Expected behavior
+Other authentication, user-management, editing, and cancellation routes depend on the current backend route definitions. Check backend/src/routes/ for their exact methods and paths.
 
-- Valid registration creates a user and assigns the ATTENDEE role.
-- Duplicate email returns HTTP 409.
-- Invalid input returns HTTP 400.
-- Passwords are hashed with bcrypt before storage.
-- The response never includes the password or password hash.
-
-## 5. Scope and limitations
-
-This implements registration only. Login, tokens/sessions, email verification, rate limiting, password reset, and protected routes are not included in EMS-F-001. Test locally before merging; this starter archive does not include your actual `schema.sql` because the exact file was not attached in the current request.
+Protected requests use the token returned by the login flow, typically in this header:
+Authorization: Bearer <token>
+Typical User Workflow
+1. Register an account or sign in.
+2. An administrator assigns the appropriate role.
+3. An administrator or organizer creates an event and optionally provides a registration-form URL.
+4. Authenticated users view event cards.
+5. Attendees select Register to open the external registration form.
+6. An authorized creator edits or postpones a scheduled event when needed.
+7. An authorized user cancels a scheduled event when required.
+Testing Checklist
+- [ ] Register a user and sign in.
+- [ ] Verify passwords are not stored as plain text.
+- [ ] Verify unauthenticated requests to protected endpoints are rejected.
+- [ ] Verify attendees cannot access organizer/admin-only event operations.
+- [ ] Create an event with valid details.
+- [ ] Verify invalid event data is rejected.
+- [ ] Verify events appear after refreshing the event list.
+- [ ] Verify the Register link opens the configured form.
+- [ ] Edit a scheduled event and verify changes persist after refresh.
+- [ ] Postpone an event and verify the new schedule persists.
+- [ ] Cancel an event and verify CANCELLED persists after refresh.
+- [ ] Verify users cannot modify events they are not authorized to manage.
+Security Notes
+- Never commit .env files, credentials, JWT secrets, or production data.
+- Use strong, unique secrets.
+- Enforce authorization on the backend for every protected operation.
+- Validate user input on the server.
+- Do not rely on frontend-only restrictions as access control.
+- Configure HTTPS and production security settings before deployment.
+Current Scope
+This README documents the locally tested EMS-F-002, EMS-F-003, and EMS-F-004 functionality. Document additional features only after their implementation and tests have been verified
