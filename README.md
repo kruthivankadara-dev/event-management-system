@@ -20,6 +20,10 @@ EMS-F-004 — Event Editing, Postponement, and Cancellation
 - Authorized users can cancel scheduled events.
 - Updated event details and status are reflected in the application.
 - Backend authorization must be enforced; frontend button visibility alone is not a security control.
+EMS-F-005 — Event Search and Filtering
+- Authenticated users can search scheduled events by title or description, and filter by category, event date, and venue.
+- Filters can be combined, and event details open inline from the results.
+- The current event model has no draft or unpublished state; events are scheduled and available when created.
 The project team reports that these workflows have been tested in the local development environment.
 Technology Stack
 - Frontend: React, Vite, JavaScript, CSS
@@ -64,7 +68,7 @@ git clone https://github.com/se-ems-team8/event-management-system.git
 cd event-management-system
 If the repository is already cloned, open its project directory in VS Code.
 2. Set up the database
-Start MySQL and run the repository's schema and migration SQL files using MySQL Workbench or the MySQL command line.
+Start MySQL and run the repository's schema and migration SQL files in order using MySQL Workbench or the MySQL command line. Migration `002_add_event_status.sql` safely adds the existing `SCHEDULED`/`CANCELLED` status model when it is missing and can be rerun.
 
 The application database is:
 CREATE DATABASE IF NOT EXISTS event_management_system;
@@ -108,7 +112,7 @@ Open the local URL printed by Vite (the current setup uses http://localhost:5173
 API Routes
 The following event routes are part of the current implementation:
 Method	Endpoint	Access	Purpose
-GET	/api/v1/events	Authenticated users	Retrieve events
+GET	/api/v1/events	Authenticated users	Retrieve scheduled events; supports `q`, `category`, `date` (`YYYY-MM-DD`), and `venue` filters
 POST	/api/v1/events	ADMIN or ORGANIZER	Create an event
 
 
@@ -120,7 +124,7 @@ Typical User Workflow
 1. Register an account or sign in.
 2. An administrator assigns the appropriate role.
 3. An administrator or organizer creates an event and optionally provides a registration-form URL.
-4. Authenticated users view event cards.
+4. Authenticated users search and filter event cards, then open a result to view its details.
 5. Attendees select Register to open the external registration form.
 6. An authorized creator edits or postpones a scheduled event when needed.
 7. An authorized user cancels a scheduled event when required.
@@ -132,6 +136,8 @@ Testing Checklist
 - [ ] Create an event with valid details.
 - [ ] Verify invalid event data is rejected.
 - [ ] Verify events appear after refreshing the event list.
+- [ ] Search by title/description; verify category, date, venue, and combined filters.
+- [ ] Verify cancelled events are excluded and the no-results message appears.
 - [ ] Verify the Register link opens the configured form.
 - [ ] Edit a scheduled event and verify changes persist after refresh.
 - [ ] Postpone an event and verify the new schedule persists.
@@ -145,4 +151,4 @@ Security Notes
 - Do not rely on frontend-only restrictions as access control.
 - Configure HTTPS and production security settings before deployment.
 Current Scope
-This README documents the locally tested EMS-F-002, EMS-F-003, and EMS-F-004 functionality. Document additional features only after their implementation and tests have been verified
+This README documents EMS-F-002 through EMS-F-005. The current database model does not distinguish unpublished or draft events.

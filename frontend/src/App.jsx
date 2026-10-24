@@ -23,6 +23,13 @@ function App() {
 const [events, setEvents] = useState([]);
 const [eventsLoading, setEventsLoading] = useState(false);
 const [eventsError, setEventsError] = useState("");
+const [eventFilters, setEventFilters] = useState({
+  q: "",
+  category: "",
+  date: "",
+  venue: ""
+});
+const [selectedEventId, setSelectedEventId] = useState(null);
 
 
   
@@ -176,18 +183,28 @@ const [eventActionLoading, setEventActionLoading] = useState(false);
 }
 
 
-async function fetchEvents() {
+async function fetchEvents(filters = eventFilters, signal) {
   setEventsLoading(true);
   setEventsError("");
 
   try {
     const token = localStorage.getItem("ems_token");
+    const query = new URLSearchParams();
 
-    const response = await fetch(`${API_URL}/events`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value.trim()) query.set(key, value.trim());
     });
+
+    const queryString = query.toString();
+    const response = await fetch(
+      `${API_URL}/events${queryString ? `?${queryString}` : ""}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        signal
+      }
+    );
 
     const result = await response.json();
 
@@ -195,27 +212,44 @@ async function fetchEvents() {
       throw new Error(result.message || "Could not load events.");
     }
 
-    setEvents(result.data.events || []);
+    if (!Array.isArray(result.data?.events)) {
+      throw new Error("The server did not return an event list.");
+    }
+
+    setEvents(result.data.events);
   } catch (err) {
+    if (signal?.aborted) return;
+
+    setEvents([]);
     setEventsError(
       err instanceof TypeError
         ? "Cannot connect to the server."
         : err.message
     );
   } finally {
-    setEventsLoading(false);
+    if (!signal?.aborted) setEventsLoading(false);
   }
 }
 
 
 
 useEffect(() => {
-  if (user) {
-    fetchEvents();
+  if (!user) return undefined;
 
-    if (user.roles?.includes("ADMIN")) {
-      fetchUsers();
-    }
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    fetchEvents(eventFilters, controller.signal);
+  }, 250);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+    controller.abort();
+  };
+}, [user, eventFilters]);
+
+useEffect(() => {
+  if (user?.roles?.includes("ADMIN")) {
+    fetchUsers();
   }
 }, [user]);
 
@@ -291,25 +325,97 @@ useEffect(() => {
     <h3>Attendee dashboard</h3>
     <p>Discover upcoming events.</p>
 
-    {eventsLoading && <p>Loading events...</p>}
+    {eventsLoading && <p role="status">Loading events...</p>}
 
     {eventsError && (
       <p className="alert error" role="alert">{eventsError}</p>
     )}
 
+    <form
+      className="event-search-filters"
+      role="search"
+      aria-label="Search and filter events"
+      onSubmit={event => event.preventDefault()}
+    >
+      <div>
+        <label htmlFor="event-search-keyword">Keyword</label>
+        <input
+          id="event-search-keyword"
+          type="search"
+          value={eventFilters.q}
+          onChange={event =>
+            setEventFilters({ ...eventFilters, q: event.target.value })
+          }
+          placeholder="Search titles and descriptions"
+        />
+      </div>
+      <div>
+        <label htmlFor="event-search-category">Category</label>
+        <input
+          id="event-search-category"
+          type="text"
+          value={eventFilters.category}
+          onChange={event =>
+            setEventFilters({ ...eventFilters, category: event.target.value })
+          }
+          placeholder="Any category"
+        />
+      </div>
+      <div>
+        <label htmlFor="event-search-date">Event date</label>
+        <input
+          id="event-search-date"
+          type="date"
+          value={eventFilters.date}
+          onChange={event =>
+            setEventFilters({ ...eventFilters, date: event.target.value })
+          }
+        />
+      </div>
+      <div>
+        <label htmlFor="event-search-venue">Venue</label>
+        <input
+          id="event-search-venue"
+          type="search"
+          value={eventFilters.venue}
+          onChange={event =>
+            setEventFilters({ ...eventFilters, venue: event.target.value })
+          }
+          placeholder="Any venue"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          setEventFilters({ q: "", category: "", date: "", venue: "" });
+          setSelectedEventId(null);
+        }}
+      >
+        Clear filters
+      </button>
+    </form>
+
     {!eventsLoading && !eventsError && events.length === 0 && (
-      <p>No events are available yet.</p>
+      <p role="status">No events match your search.</p>
     )}
 
     {events.map((event) => (
-      <article key={event.event_id} className="dashboard-panel">
-        <h4>{event.title}</h4>
-
-        <p>
-  <strong>Status:</strong> {event.status || "SCHEDULED"}
-</p>
-
-        {event.description && <p>{event.description}</p>}
+      <article key={event.event_id} className="event-result">
+        <h4>
+          <button
+            type="button"
+            className="event-title-button"
+            aria-expanded={selectedEventId === event.event_id}
+            onClick={() =>
+              setSelectedEventId(
+                selectedEventId === event.event_id ? null : event.event_id
+              )
+            }
+          >
+            {selectedEventId === event.event_id ? "Hide details" : "View details"}:{" "}
+            {event.title}
+          </button>
+        </h4>
 
         {event.category && (
           <p><strong>Category:</strong> {event.category}</p>
@@ -322,64 +428,74 @@ useEffect(() => {
           {new Date(event.start_datetime).toLocaleString()}
         </p>
 
-        <p>
-          <strong>Ends:</strong>{" "}
-          {new Date(event.end_datetime).toLocaleString()}
-        </p>
+        {selectedEventId === event.event_id && (
+          <div className="event-detail">
+            <p>
+              <strong>Status:</strong> {event.status || "SCHEDULED"}
+            </p>
 
-        <p><strong>Capacity:</strong> {event.capacity}</p>
+            {event.description && <p>{event.description}</p>}
 
-      
-<div className="event-media">
-  {event.image_url && (
-    <img
-      src={event.image_url}
-      alt={event.title}
-      style={{
-        maxWidth: "100%",
-        borderRadius: "8px",
-        display: "block"
-      }}
-    />
-  )}
+            <p>
+              <strong>Ends:</strong>{" "}
+              {new Date(event.end_datetime).toLocaleString()}
+            </p>
 
-  {event.registration_url &&
-    (event.status || "SCHEDULED") === "SCHEDULED" && (
-      <a
-        href={event.registration_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="register-button"
-      >
-        Register
-      </a>
-    )}
-</div>
-<p>Role: {roles.join(", ")}</p>
-<p>Event creator: {event.created_by}</p>
-<p>Current user ID: {user.id}</p>
-<p>Event status: {event.status || "SCHEDULED"}</p>
-{(roles.includes("ADMIN") || roles.includes("ORGANIZER")) &&
-  event.created_by === user.id &&
-  event.status === "SCHEDULED" && (
-    <div className="event-actions">
-      <button
-        type="button"
-        onClick={() => startEditingEvent(event)}
-        disabled={eventActionLoading === event.event_id}
-      >
-        Edit Event
-      </button>
+            <p><strong>Capacity:</strong> {event.capacity}</p>
 
-      <button
-        type="button"
-        onClick={() => cancelEvent(event.event_id)}
-        disabled={eventActionLoading === event.event_id}
-      >
-        Cancel Event
-      </button>
-    </div>
-)}
+            <div className="event-media">
+              {event.image_url && (
+                <img
+                  src={event.image_url}
+                  alt={event.title}
+                  style={{
+                    maxWidth: "100%",
+                    borderRadius: "8px",
+                    display: "block"
+                  }}
+                />
+              )}
+
+              {event.registration_url &&
+                (event.status || "SCHEDULED") === "SCHEDULED" && (
+                  <a
+                    href={event.registration_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="register-button"
+                  >
+                    Register
+                  </a>
+                )}
+            </div>
+
+            <p>Role: {roles.join(", ")}</p>
+            <p>Event creator: {event.created_by}</p>
+            <p>Current user ID: {user.id}</p>
+            <p>Event status: {event.status || "SCHEDULED"}</p>
+            {(roles.includes("ADMIN") || roles.includes("ORGANIZER")) &&
+              event.created_by === user.id &&
+              event.status === "SCHEDULED" && (
+                <div className="event-actions">
+                  <button
+                    type="button"
+                    onClick={() => startEditingEvent(event)}
+                    disabled={eventActionLoading === event.event_id}
+                  >
+                    Edit Event
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => cancelEvent(event.event_id)}
+                    disabled={eventActionLoading === event.event_id}
+                  >
+                    Cancel Event
+                  </button>
+                </div>
+              )}
+          </div>
+        )}
       </article>
     ))}
   </div>

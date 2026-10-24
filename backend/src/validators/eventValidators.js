@@ -22,6 +22,36 @@ const eventSchema = z.object({
   registrationUrl: z.string().trim().max(2048).optional().default("")
 }).strict();
 
+function optionalTrimmedString(maxLength) {
+  return z.preprocess(
+    value => typeof value === "string" && !value.trim() ? undefined : value,
+    z.string().trim().max(maxLength).optional()
+  );
+}
+
+const eventSearchQuerySchema = z.object({
+  q: optionalTrimmedString(200),
+  category: optionalTrimmedString(100),
+  date: z.preprocess(
+    value => typeof value === "string" && !value.trim() ? undefined : value,
+    z.string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date in YYYY-MM-DD format.")
+      .refine(value => {
+        const [year] = value.split("-").map(Number);
+        const parsed = new Date(`${value}T00:00:00.000Z`);
+        return year >= 1000 &&
+          !Number.isNaN(parsed.getTime()) &&
+          parsed.toISOString().slice(0, 10) === value;
+      }, "Use a valid date in YYYY-MM-DD format.")
+      .optional()
+  ),
+  venue: optionalTrimmedString(255)
+}).strict();
+
+function validateEventSearchQuery(input) {
+  return eventSearchQuerySchema.safeParse(input);
+}
+
 function validateEvent(input) {
   const parsed = eventSchema.safeParse(input);
 
@@ -143,4 +173,9 @@ function validateEvent(input) {
   return parsed;
 }
 
-module.exports = { eventSchema, validateEvent };
+module.exports = {
+  eventSchema,
+  eventSearchQuerySchema,
+  validateEvent,
+  validateEventSearchQuery
+};
