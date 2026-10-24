@@ -1,25 +1,67 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from "react";
 import "./App.css";
 
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
 
+const ROLES = ["ATTENDEE", "ORGANIZER", "ADMIN", "EVENT_STAFF"];
+
 function App() {
+  const [mode, setMode] = useState("register");
   const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
     confirmPassword: ""
   });
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  
+const [events, setEvents] = useState([]);
+const [eventsLoading, setEventsLoading] = useState(false);
+const [eventsError, setEventsError] = useState("");
+
+
+  
+const [eventForm, setEventForm] = useState({
+  title: "",
+  description: "",
+  category: "",
+  venue: "",
+  startDateTime: "",
+  endDateTime: "",
+  capacity: "",
+  registrationDeadline: "",
+  imageUrl: "",
+  registrationUrl: ""
+});
+
+const [selectedImage, setSelectedImage] = useState(null);
+const [imagePreview, setImagePreview] = useState("");
+const [eventMessage, setEventMessage] = useState("");
+const [eventError, setEventError] = useState("");
+const [eventLoading, setEventLoading] = useState(false);
+const [editingEventId, setEditingEventId] = useState(null);
+const [eventActionLoading, setEventActionLoading] = useState(false);
+
+
+  const [targetUserId, setTargetUserId] = useState("");
+  const [targetRole, setTargetRole] = useState("ORGANIZER");
+  const [registeredUsers, setRegisteredUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState("");
+  const [roleLoading, setRoleLoading] = useState(false);
+  const [roleMessage, setRoleMessage] = useState("");
+  const [roleError, setRoleError] = useState("");
 
   function handleChange(event) {
-    setForm((current) => ({
-      ...current,
+    setForm({
+      ...form,
       [event.target.name]: event.target.value
-    }));
+    });
   }
 
   async function handleSubmit(event) {
@@ -27,7 +69,8 @@ function App() {
     setMessage("");
     setError("");
 
-    if (form.password !== form.confirmPassword) {
+    if (mode === "register" &&
+        form.password !== form.confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
@@ -35,29 +78,53 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/auth/register`, {
+      const endpoint =
+        mode === "register" ? "/auth/register" : "/auth/login";
+
+      const body =
+        mode === "register"
+          ? {
+              name: form.name,
+              email: form.email,
+              password: form.password
+            }
+          : {
+              email: form.email,
+              password: form.password
+            };
+
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          email: form.email,
-          password: form.password
-        })
+        body: JSON.stringify(body)
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || "Registration failed.");
+        throw new Error(result.message || "Request failed.");
       }
 
-      setMessage("Account created successfully. You can now sign in.");
-      setForm({
-        name: "",
-        email: "",
-        password: "",
-        confirmPassword: ""
-      });
+      if (mode === "register") {
+        setMessage("Account created successfully. Please sign in.");
+        setMode("login");
+        setForm({
+          name: "",
+          email: form.email,
+          password: "",
+          confirmPassword: ""
+        });
+      } else {
+        localStorage.setItem("ems_token", result.data.token);
+        setUser(result.data.user);
+        setMessage("Login successful.");
+        setForm({
+          name: "",
+          email: "",
+          password: "",
+          confirmPassword: ""
+        });
+      }
     } catch (err) {
       setError(
         err instanceof TypeError
@@ -68,6 +135,884 @@ function App() {
       setLoading(false);
     }
   }
+  async function fetchUsers() {
+  setUsersLoading(true);
+  setUsersError("");
+
+  try {
+    const token = localStorage.getItem("ems_token");
+
+    const response = await fetch(`${API_URL}/auth/users`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not load users.");
+    }
+
+    const users = result.data;
+
+    if (!Array.isArray(users)) {
+      throw new Error("The server did not return a user list.");
+    }
+
+    setRegisteredUsers(
+      users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        roles: Array.isArray(u.roles) ? u.roles : []
+      }))
+    );
+  } catch (err) {
+    setUsersError(err.message || "Could not load registered users.");
+  } finally {
+    setUsersLoading(false);
+  }
+}
+
+
+async function fetchEvents() {
+  setEventsLoading(true);
+  setEventsError("");
+
+  try {
+    const token = localStorage.getItem("ems_token");
+
+    const response = await fetch(`${API_URL}/events`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not load events.");
+    }
+
+    setEvents(result.data.events || []);
+  } catch (err) {
+    setEventsError(
+      err instanceof TypeError
+        ? "Cannot connect to the server."
+        : err.message
+    );
+  } finally {
+    setEventsLoading(false);
+  }
+}
+
+
+
+useEffect(() => {
+  if (user) {
+    fetchEvents();
+
+    if (user.roles?.includes("ADMIN")) {
+      fetchUsers();
+    }
+  }
+}, [user]);
+
+
+  async function assignRole(event) {
+    event.preventDefault();
+    setRoleMessage("");
+    setRoleError("");
+
+    if (!targetUserId.trim()) {
+      setRoleError("Enter the target user's ID.");
+      return;
+    }
+
+    setRoleLoading(true);
+
+    try {
+      const token = localStorage.getItem("ems_token");
+
+      const response = await fetch(`${API_URL}/auth/assign-role`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userId: targetUserId.trim(),
+          roleName: targetRole
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Role assignment failed.");
+      }
+
+      setRoleMessage(result.message || `${targetRole} role assigned successfully.`);
+      setTargetUserId("");
+    } catch (err) {
+      setRoleError(
+        err instanceof TypeError
+          ? "Cannot connect to the server."
+          : err.message
+      );
+    } finally {
+      setRoleLoading(false);
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("ems_token");
+    setUser(null);
+    setMode("login");
+    setMessage("You have signed out.");
+    setError("");
+    setRoleMessage("");
+    setRoleError("");
+  }
+
+  function renderDashboard() {
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+
+    return (
+      <section className="dashboard-section">
+        <h2>Your dashboard</h2>
+
+        
+{(roles.includes("ATTENDEE") ||
+  roles.includes("ADMIN") ||
+  roles.includes("ORGANIZER")) && (
+  <div className="dashboard-panel">
+    <h3>Attendee dashboard</h3>
+    <p>Discover upcoming events.</p>
+
+    {eventsLoading && <p>Loading events...</p>}
+
+    {eventsError && (
+      <p className="alert error" role="alert">{eventsError}</p>
+    )}
+
+    {!eventsLoading && !eventsError && events.length === 0 && (
+      <p>No events are available yet.</p>
+    )}
+
+    {events.map((event) => (
+      <article key={event.event_id} className="dashboard-panel">
+        <h4>{event.title}</h4>
+
+        <p>
+  <strong>Status:</strong> {event.status || "SCHEDULED"}
+</p>
+
+        {event.description && <p>{event.description}</p>}
+
+        {event.category && (
+          <p><strong>Category:</strong> {event.category}</p>
+        )}
+
+        <p><strong>Venue:</strong> {event.venue}</p>
+
+        <p>
+          <strong>Starts:</strong>{" "}
+          {new Date(event.start_datetime).toLocaleString()}
+        </p>
+
+        <p>
+          <strong>Ends:</strong>{" "}
+          {new Date(event.end_datetime).toLocaleString()}
+        </p>
+
+        <p><strong>Capacity:</strong> {event.capacity}</p>
+
+      
+<div className="event-media">
+  {event.image_url && (
+    <img
+      src={event.image_url}
+      alt={event.title}
+      style={{
+        maxWidth: "100%",
+        borderRadius: "8px",
+        display: "block"
+      }}
+    />
+  )}
+
+  {event.registration_url &&
+    (event.status || "SCHEDULED") === "SCHEDULED" && (
+      <a
+        href={event.registration_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="register-button"
+      >
+        Register
+      </a>
+    )}
+</div>
+<p>Role: {roles.join(", ")}</p>
+<p>Event creator: {event.created_by}</p>
+<p>Current user ID: {user.id}</p>
+<p>Event status: {event.status || "SCHEDULED"}</p>
+{(roles.includes("ADMIN") || roles.includes("ORGANIZER")) &&
+  event.created_by === user.id &&
+  event.status === "SCHEDULED" && (
+    <div className="event-actions">
+      <button
+        type="button"
+        onClick={() => startEditingEvent(event)}
+        disabled={eventActionLoading === event.event_id}
+      >
+        Edit Event
+      </button>
+
+      <button
+        type="button"
+        onClick={() => cancelEvent(event.event_id)}
+        disabled={eventActionLoading === event.event_id}
+      >
+        Cancel Event
+      </button>
+    </div>
+)}
+      </article>
+    ))}
+  </div>
+)}
+
+
+        {roles.includes("ORGANIZER") && (
+          <div className="dashboard-panel">
+            <h3>Organizer dashboard</h3>
+            <p>Create and manage events, registrations, schedules, and event reports.</p>
+            <p className="subtitle">
+              Event-management actions must be connected to authorized backend endpoints.
+            </p>
+          </div>
+        )}
+
+        {roles.includes("EVENT_STAFF") && (
+          <div className="dashboard-panel">
+            <h3>Event staff dashboard</h3>
+            <p>Support event operations, validate tickets, and record attendance.</p>
+            <p className="subtitle">
+              Ticket validation and attendance features can be connected here.
+            </p>
+          </div>
+        )}
+
+        {roles.includes("ADMIN") && (
+          <div className="dashboard-panel">
+            <h3>Administrator dashboard</h3>
+            <p>Manage user roles and access authorized administrative features.</p>
+
+            <form onSubmit={assignRole}>
+              <label htmlFor="targetUserId">Select registered user</label>
+
+{usersError && (
+  <p className="alert error" role="alert">
+    {usersError}
+  </p>
+)}
+
+<select
+  id="targetUserId"
+  value={targetUserId}
+  onChange={(event) => setTargetUserId(event.target.value)}
+  required
+>
+  <option value="">Select a user</option>
+
+  {registeredUsers.map((registeredUser) => (
+    <option
+      key={registeredUser.id}
+      value={registeredUser.id}
+    >
+      {registeredUser.name} — {registeredUser.email}
+      {" ("}
+      {Array.isArray(registeredUser.roles)
+        ? registeredUser.roles.join(", ")
+        : "No role"}
+      {")"}
+    </option>
+  ))}
+</select>
+
+              <label htmlFor="targetRole">Role to assign</label>
+              <select
+                id="targetRole"
+                value={targetRole}
+                onChange={(event) => setTargetRole(event.target.value)}
+              >
+              {["ATTENDEE", "ORGANIZER", "EVENT_STAFF"].map((role) => (
+  <option key={role} value={role}>
+    {role}
+  </option>
+))}
+              </select>
+
+              {roleError && (
+                <p className="alert error" role="alert">{roleError}</p>
+              )}
+
+              {roleMessage && (
+                <p className="alert success" role="status">{roleMessage}</p>
+              )}
+
+              <button type="submit" disabled={roleLoading}>
+                {roleLoading ? "Assigning..." : "Assign role"}
+              </button>
+            </form>
+
+            <p className="subtitle">
+              Use a registered user's ID. The backend must verify ADMIN permissions.
+            </p>
+          </div>
+        )}
+
+        {roles.length === 0 && (
+          <p className="alert error">
+            No roles are assigned to this account. Contact an administrator.
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  
+async function createEvent(event) {
+  event.preventDefault();
+  setEventMessage("");
+  setEventError("");
+
+  const start = new Date(eventForm.startDateTime);
+  const end = new Date(eventForm.endDateTime);
+
+  if (end <= start) {
+    setEventError("End date and time must be later than the start.");
+    return;
+  }
+
+  if (
+    eventForm.registrationDeadline &&
+    new Date(eventForm.registrationDeadline) > start
+  ) {
+    setEventError(
+      "Registration deadline must be on or before the event start."
+    );
+    return;
+  }
+
+  setEventLoading(true);
+
+  try {
+    let uploadedImageUrl = eventForm.imageUrl;
+
+if (selectedImage) {
+  const imageData = new FormData();
+  imageData.append("image", selectedImage);
+
+  const uploadResponse = await fetch(`${API_URL}/images`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+    },
+    body: imageData
+  });
+
+  const uploadResult = await uploadResponse.json();
+
+  if (!uploadResponse.ok) {
+    throw new Error(uploadResult.message || "Image upload failed.");
+  }
+
+  uploadedImageUrl = uploadResult.data.imageUrl;
+}
+    const response = await fetch(`${API_URL}/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+      },
+      body: JSON.stringify({
+        ...eventForm,
+        imageUrl: uploadedImageUrl,
+        capacity: Number(eventForm.capacity),
+        registrationDeadline: eventForm.registrationDeadline || null
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      const fieldMessages = result.errors
+        ?.map(item => `${item.field}: ${item.message}`)
+        .join(" ");
+
+      throw new Error(
+        fieldMessages || result.message || "Could not create the event."
+      );
+    }
+
+    setEventMessage(
+      `Event "${result.data.event.title}" created successfully.`
+    );
+
+    setEventForm({
+      title: "",
+      description: "",
+      category: "",
+      venue: "",
+      startDateTime: "",
+      endDateTime: "",
+      capacity: "",
+      registrationDeadline: "",
+      imageUrl: "",
+      registrationUrl: ""
+    });
+  } catch (err) {
+    setEventError(
+      err instanceof TypeError
+        ? "Cannot connect to the server. Check that the backend is running."
+        : err.message
+    );
+  } finally {
+    setEventLoading(false);
+  }
+}
+
+function startEditingEvent(event) {
+  setEventMessage("");
+  setEventError("");
+  editEvent(event);
+}
+
+async function editEvent(event) {
+  setEventError("");
+  setEventMessage("");
+
+  setEventForm({
+    title: event.title || "",
+    description: event.description || "",
+    category: event.category || "",
+    venue: event.venue || "",
+    startDateTime: event.start_datetime
+      ? new Date(event.start_datetime).toISOString().slice(0, 16)
+      : "",
+    endDateTime: event.end_datetime
+      ? new Date(event.end_datetime).toISOString().slice(0, 16)
+      : "",
+    capacity: String(event.capacity || ""),
+    registrationDeadline: event.registration_deadline
+      ? new Date(event.registration_deadline).toISOString().slice(0, 16)
+      : "",
+    imageUrl: event.image_url || "",
+    registrationUrl: event.registration_url || ""
+  });
+
+  setEditingEventId(event.event_id);
+  setSelectedImage(null);
+  setImagePreview("");
+  document.getElementById("event-heading")?.scrollIntoView({
+    behavior: "smooth"
+  });
+}
+
+
+async function updateEvent(event) {
+  event.preventDefault();
+  setEventError("");
+  setEventMessage("");
+
+  if (!editingEventId) return;
+
+  const start = new Date(eventForm.startDateTime);
+  const end = new Date(eventForm.endDateTime);
+
+  if (end <= start) {
+    setEventError("End date and time must be later than the start.");
+    return;
+  }
+
+  if (
+    eventForm.registrationDeadline &&
+    new Date(eventForm.registrationDeadline) > start
+  ) {
+    setEventError(
+      "Registration deadline must be on or before the event start."
+    );
+    return;
+  }
+
+  setEventLoading(true);
+
+  try {
+    let uploadedImageUrl = eventForm.imageUrl;
+
+    if (selectedImage) {
+      const imageData = new FormData();
+      imageData.append("image", selectedImage);
+
+      const uploadResponse = await fetch(`${API_URL}/images`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+        },
+        body: imageData
+      });
+
+      const uploadResult = await uploadResponse.json();
+
+      if (!uploadResponse.ok) {
+        throw new Error(uploadResult.message || "Image upload failed.");
+      }
+
+      uploadedImageUrl = uploadResult.data.imageUrl;
+    }
+
+    const response = await fetch(`${API_URL}/events/${editingEventId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+      },
+      body: JSON.stringify({
+        ...eventForm,
+        imageUrl: uploadedImageUrl,
+        capacity: Number(eventForm.capacity),
+        registrationDeadline: eventForm.registrationDeadline || null
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      const fieldMessages = result.errors
+        ?.map(item => `${item.field}: ${item.message}`)
+        .join(" ");
+
+      throw new Error(
+        fieldMessages || result.message || "Could not update the event."
+      );
+    }
+
+    setEventMessage("Event updated successfully.");
+    setEditingEventId(null);
+    setSelectedImage(null);
+    setImagePreview("");
+
+    setEventForm({
+      title: "",
+      description: "",
+      category: "",
+      venue: "",
+      startDateTime: "",
+      endDateTime: "",
+      capacity: "",
+      registrationDeadline: "",
+      imageUrl: "",
+      registrationUrl: ""
+    });
+
+    await fetchEvents();
+  } catch (err) {
+    setEventError(
+      err instanceof TypeError
+        ? "Cannot connect to the server."
+        : err.message
+    );
+  } finally {
+    setEventLoading(false);
+  }
+}
+
+
+async function cancelEvent(eventId) {
+  if (!window.confirm("Are you sure you want to cancel this event?")) {
+    return;
+  }
+
+  setEventError("");
+  setEventMessage("");
+  setEventActionLoading(true);
+
+  try {
+    const response = await fetch(`${API_URL}/events/${eventId}/cancel`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+      }
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not cancel the event.");
+    }
+
+    setEventMessage("Event cancelled successfully.");
+    await fetchEvents();
+  } catch (err) {
+    setEventError(err.message || "Could not cancel the event.");
+  } finally {
+    setEventActionLoading(false);
+  }
+}
+
+function updateEventField(event) {
+  setEventForm({
+    ...eventForm,
+    [event.target.name]: event.target.value
+  });
+}
+
+
+  if (user) {
+    return (
+      <main className="page">
+        <section className="register-card">
+          <div className="brand">
+            <span className="brand-mark">E</span>
+            <span>Event Management System</span>
+          </div>
+
+          <p className="eyebrow">SIGNED IN</p>
+          <h1>Welcome, {user.name}!</h1>
+          <p className="subtitle">You are successfully authenticated.</p>
+
+          <p><strong>Email:</strong> {user.email}</p>
+          <p>
+            <strong>Roles:</strong>{" "}
+            {user.roles?.join(", ") || "No role assigned"}
+          </p>
+
+          {message && <p className="alert success">{message}</p>}
+
+          
+{renderDashboard()}
+
+{user.roles?.some(role => ["ADMIN", "ORGANIZER"].includes(role)) && (
+  <section className="event-section" aria-labelledby="event-heading">
+    <p className="eyebrow">EVENT MANAGEMENT</p>
+    <h2 id="event-heading">Create an event</h2>
+    <p className="subtitle">
+      Add the event details below. Your account will be recorded as its creator.
+    </p>
+
+    <form onSubmit={editingEventId ? updateEvent : createEvent}>
+      <label htmlFor="event-title">Event title</label>
+      <input
+        id="event-title"
+        name="title"
+        value={eventForm.title}
+        onChange={updateEventField}
+        maxLength={200}
+        required
+      />
+
+      <label htmlFor="event-description">Description</label>
+      <textarea
+        id="event-description"
+        name="description"
+        value={eventForm.description}
+        onChange={updateEventField}
+        maxLength={5000}
+        rows={4}
+      />
+
+      <label htmlFor="event-category">Category</label>
+      <input
+        id="event-category"
+        name="category"
+        value={eventForm.category}
+        onChange={updateEventField}
+        maxLength={100}
+      />
+
+      <label htmlFor="event-venue">Venue / location</label>
+      <input
+        id="event-venue"
+        name="venue"
+        value={eventForm.venue}
+        onChange={updateEventField}
+        maxLength={255}
+        required
+      />
+
+      <div className="event-grid">
+        <div>
+          <label htmlFor="event-start">Starts</label>
+          <input
+            id="event-start"
+            name="startDateTime"
+            type="datetime-local"
+            value={eventForm.startDateTime}
+            onChange={updateEventField}
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="event-end">Ends</label>
+          <input
+            id="event-end"
+            name="endDateTime"
+            type="datetime-local"
+            value={eventForm.endDateTime}
+            onChange={updateEventField}
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="event-capacity">Capacity</label>
+          <input
+            id="event-capacity"
+            name="capacity"
+            type="number"
+            min="1"
+            step="1"
+            value={eventForm.capacity}
+            onChange={updateEventField}
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="event-deadline">Registration deadline</label>
+          <input
+            id="event-deadline"
+            name="registrationDeadline"
+            type="datetime-local"
+            value={eventForm.registrationDeadline}
+            onChange={updateEventField}
+          />
+        </div>
+      </div>
+
+      <label htmlFor="event-image">Event image URL</label>
+      
+      <input
+        id="event-image"
+        name="imageUrl"
+        type="url"
+        placeholder="https://example.com/image.jpg"
+        value={eventForm.imageUrl}
+        onChange={updateEventField}
+        maxLength={2048}
+      />
+      
+<label htmlFor="event-image-file">Or upload an image from your laptop</label>
+<input
+  id="event-image-file"
+  type="file"
+  accept="image/jpeg,image/png,image/webp"
+  onChange={(event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setEventError("Image must be 5 MB or smaller.");
+      event.target.value = "";
+      setSelectedImage(null);
+      setImagePreview("");
+      return;
+    }
+
+    setEventError("");
+    setSelectedImage(file);
+    setImagePreview(URL.createObjectURL(file));
+  }}
+/>
+
+{imagePreview && (
+  <img
+    src={imagePreview}
+    alt="Selected event preview"
+    style={{
+      maxWidth: "250px",
+      maxHeight: "250px",
+      marginTop: "10px",
+      borderRadius: "8px",
+      objectFit: "contain"
+    }}
+  />
+)}
+
+
+            <label htmlFor="event-registration-url">Registration Form URL</label>
+      <input
+        id="event-registration-url"
+        name="registrationUrl"
+        type="url"
+        placeholder="https://docs.google.com/forms/..."
+        value={eventForm.registrationUrl}
+        onChange={updateEventField}
+        maxLength={2048}
+      />
+
+      {eventError && (
+        <p className="alert error" role="alert">{eventError}</p>
+      )}
+
+      {eventMessage && (
+        <p className="alert success" role="status">{eventMessage}</p>
+      )}
+
+      <button type="submit" disabled={eventLoading}>
+  {eventLoading
+    ? editingEventId
+      ? "Updating event..."
+      : "Creating event..."
+    : editingEventId
+      ? "Update event"
+      : "Create event"}
+</button>
+
+{editingEventId && (
+  <button
+    type="button"
+    onClick={() => {
+      setEditingEventId(null);
+      setEventError("");
+      setEventMessage("");
+      setSelectedImage(null);
+      setImagePreview("");
+      setEventForm({
+        title: "",
+        description: "",
+        category: "",
+        venue: "",
+        startDateTime: "",
+        endDateTime: "",
+        capacity: "",
+        registrationDeadline: "",
+        imageUrl: "",
+        registrationUrl: ""
+      });
+    }}
+  >
+    Stop editing
+  </button>
+)}
+    </form>
+  </section>
+)}
+
+
+          <button type="button" onClick={logout}>Sign out</button>
+        </section>
+      </main>
+    );
+  }
+
+
 
   return (
     <main className="page">
@@ -77,33 +1022,43 @@ function App() {
           <span>Event Management System</span>
         </div>
 
-        <p className="eyebrow">GET STARTED</p>
-        <h1>Create your account</h1>
+        <p className="eyebrow">
+          {mode === "register" ? "GET STARTED" : "WELCOME BACK"}
+        </p>
+
+        <h1>
+          {mode === "register" ? "Create your account" : "Sign in"}
+        </h1>
+
         <p className="subtitle">
-          Join EMS to discover and register for events.
+          {mode === "register"
+            ? "Join EMS to discover and register for events."
+            : "Sign in to access your account."}
         </p>
 
         <form onSubmit={handleSubmit}>
-          <label htmlFor="name">Full name</label>
-          <input
-            id="name"
-            name="name"
-            type="text"
-            autoComplete="name"
-            placeholder="Enter your full name"
-            minLength={2}
-            maxLength={100}
-            value={form.name}
-            onChange={handleChange}
-            required
-          />
+          {mode === "register" && (
+            <>
+              <label htmlFor="name">Full name</label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                placeholder="Enter your full name"
+                minLength={2}
+                maxLength={100}
+                value={form.name}
+                onChange={handleChange}
+                required
+              />
+            </>
+          )}
 
           <label htmlFor="email">Email address</label>
           <input
             id="email"
             name="email"
             type="email"
-            autoComplete="email"
             placeholder="you@example.com"
             maxLength={254}
             value={form.email}
@@ -116,7 +1071,6 @@ function App() {
             id="password"
             name="password"
             type="password"
-            autoComplete="new-password"
             placeholder="At least 8 characters"
             minLength={8}
             maxLength={72}
@@ -125,30 +1079,51 @@ function App() {
             required
           />
 
-          <label htmlFor="confirmPassword">Confirm password</label>
-          <input
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
-            autoComplete="new-password"
-            placeholder="Enter your password again"
-            minLength={8}
-            maxLength={72}
-            value={form.confirmPassword}
-            onChange={handleChange}
-            required
-          />
+          {mode === "register" && (
+            <>
+              <label htmlFor="confirmPassword">Confirm password</label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                placeholder="Enter your password again"
+                minLength={8}
+                maxLength={72}
+                value={form.confirmPassword}
+                onChange={handleChange}
+                required
+              />
+            </>
+          )}
 
           {error && <p className="alert error" role="alert">{error}</p>}
           {message && <p className="alert success" role="status">{message}</p>}
 
           <button type="submit" disabled={loading}>
-            {loading ? "Creating account..." : "Create account"}
+            {loading
+              ? "Please wait..."
+              : mode === "register"
+                ? "Create account"
+                : "Sign in"}
           </button>
         </form>
 
         <p className="footer-note">
-          Your information is handled securely.
+          {mode === "register"
+            ? "Already have an account? "
+            : "New to EMS? "}
+
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setMode(mode === "register" ? "login" : "register");
+              setMessage("");
+              setError("");
+            }}
+          >
+            {mode === "register" ? "Sign in" : "Create account"}
+          </button>
         </p>
       </section>
     </main>

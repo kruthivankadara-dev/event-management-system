@@ -141,3 +141,150 @@
     padding: 26px 20px;
   }
 }
+
+.dashboard-panel select {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin: 10px 0 18px;
+  padding: 12px 42px 12px 14px;
+
+  color: #f8fafc;
+  background-color: #171d32;
+  border: 1px solid #424b68;
+  border-radius: 10px;
+
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  outline: none;
+}
+
+.dashboard-panel select:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgb(139 92 246 / 20%);
+}
+
+.dashboard-panel select option {
+  color: #f8fafc;
+  background-color: #171d32;
+}
+
+.dashboard-panel select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dashboard-panel label {
+  display: block;
+  margin-top: 18px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+
+.register-card:has(.event-section) {
+  max-width: 760px;
+}
+
+.register-card textarea {
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 12px 13px;
+  border: 1px solid #343d57;
+  border-radius: 9px;
+  outline: none;
+  background: #0d1427;
+  color: #f5f6fb;
+  resize: vertical;
+}
+
+.register-card textarea:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgb(124 58 237 / 18%);
+}
+
+.event-section {
+  margin-top: 30px;
+  padding-top: 26px;
+  border-top: 1px solid #29314a;
+}
+
+.event-section h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.event-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.event-grid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.event-grid input {
+  min-width: 0;
+}
+
+.register-card input::placeholder {
+  color: #707b96;
+}
+
+@media (max-width: 600px) {
+  .event-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.register-button {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 12px 20px;
+  background-color: #7c3aed;
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: background-color 0.2s ease;
+}
+
+.register-button:hover {
+  background-color: #6d28d9;
+}
+
+
+.event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.event-actions button {
+  border-radius: 10px;
+  padding: 12px 20px;
+  cursor: pointer;
+}
+
+.event-media {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.event-media img {
+  max-width: 100%;
+  height: auto;
+}
+
+.event-media .register-button {
+  display: inline-block;
+  align-self: flex-start;
+  margin: 0;
+}

@@ -1,9 +1,12 @@
 const express = require("express");
 const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
+const eventRoutes = require("./routes/eventRoutes");
+const imageRoutes = require("./routes/imageRoutes");
+const path = require("path");
 
 const app = express();
-
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173"
 }));
@@ -15,6 +18,8 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/events", eventRoutes);
+app.use("/api/v1/images", imageRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
