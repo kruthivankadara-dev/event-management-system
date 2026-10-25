@@ -13,7 +13,7 @@ EMS-F-003 — Event Creation and Registration
 - Event details include title, description, category, venue, start/end date and time, capacity, registration deadline, image URL or uploaded image, and an optional registration-form URL.
 - Event data is stored in MySQL.
 - Authenticated users can view events.
-- Attendees can select Register on an event card to open its external registration form when a URL is provided.
+- Attendees can select an optional external registration form from event details.
 EMS-F-004 — Event Editing, Postponement, and Cancellation
 - Authorized event creators can edit scheduled events.
 - Events can be postponed by updating their date or time through the edit workflow.
@@ -24,6 +24,7 @@ EMS-F-005 — Event Search and Filtering
 - Authenticated users can search scheduled events by title or description, and filter by category, event date, and venue.
 - Filters can be combined, and event details open inline from the results.
 - The current event model has no draft or unpublished state; events are scheduled and available when created.
+- EMS-F-007: authenticated ATTENDEE users can register for scheduled events. MySQL prevents duplicate registrations, and a transaction locking the event row enforces capacity. Event details show the current attendee's registration status and remaining capacity.
 The project team reports that these workflows have been tested in the local development environment.
 Technology Stack
 - Frontend: React, Vite, JavaScript, CSS
@@ -68,14 +69,11 @@ git clone https://github.com/se-ems-team8/event-management-system.git
 cd event-management-system
 If the repository is already cloned, open its project directory in VS Code.
 2. Set up the database
-Start MySQL and run the repository's schema and migration SQL files in order using MySQL Workbench or the MySQL command line. Migration `002_add_event_status.sql` safely adds the existing `SCHEDULED`/`CANCELLED` status model when it is missing and can be rerun.
+Start MySQL and run the repository's schema and migration SQL files in order using MySQL Workbench or the MySQL command line. Migrations `002_add_event_status.sql`, `003_add_event_registration_url.sql`, and `004_create_event_registrations.sql` can be rerun safely.
 
 The application database is:
 CREATE DATABASE IF NOT EXISTS event_management_system;
-Ensure the schema creates the users, roles, and user_roles tables, and the events migration creates the events table. The events table must include registration_url to support registration links. If this column is missing from an existing database, run:
-USE event_management_system;
-ALTER TABLE events ADD COLUMN registration_url VARCHAR(2048) NULL;
-Do not run the ALTER TABLE statement if the column already exists.
+Ensure the schema creates the users, roles, and user_roles tables, then apply the event migrations in `database/migrations/` in numerical order. The registration migration creates the records table with foreign keys and a unique attendee/event constraint.
 
 Ensure the roles table contains:
 INSERT IGNORE INTO roles (role_name)
@@ -113,6 +111,7 @@ API Routes
 The following event routes are part of the current implementation:
 Method	Endpoint	Access	Purpose
 GET	/api/v1/events	Authenticated users	Retrieve scheduled events; supports `q`, `category`, `date` (`YYYY-MM-DD`), and `venue` filters
+POST	/api/v1/events/:id/register	ATTENDEE	Register for an available event; returns 409 for duplicates, full, or closed events
 POST	/api/v1/events	ADMIN or ORGANIZER	Create an event
 
 
@@ -125,7 +124,7 @@ Typical User Workflow
 2. An administrator assigns the appropriate role.
 3. An administrator or organizer creates an event and optionally provides a registration-form URL.
 4. Authenticated users search and filter event cards, then open a result to view its details.
-5. Attendees select Register to open the external registration form.
+5. Attendees open event details and register through EMS. An optional external registration form is also shown when configured.
 6. An authorized creator edits or postpones a scheduled event when needed.
 7. An authorized user cancels a scheduled event when required.
 Testing Checklist
