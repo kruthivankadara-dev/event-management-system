@@ -282,6 +282,16 @@
 .event-detail {
   padding-top: 4px;
   border-top: 1px solid #29314a;
+  color: #dce1ef;
+  line-height: 1.65;
+}
+
+.event-detail > p {
+  overflow-wrap: anywhere;
+}
+
+.event-detail strong {
+  color: #f5f6fb;
 }
 
 .register-card input::placeholder {
