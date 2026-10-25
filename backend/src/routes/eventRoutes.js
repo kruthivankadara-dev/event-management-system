@@ -13,6 +13,7 @@ const {
   authenticateToken,
   authorizeRoles
 } = require("../middleware/authMiddleware");
+const { registerForEvent } = require("../controllers/registrationController");
 
 const router = express.Router();
 
@@ -21,6 +22,14 @@ router.get("/", authenticateToken, getEvents);
 
 // View one scheduled event: authenticated users only.
 router.get("/:id", authenticateToken, getEventById);
+
+// Register attendees for a scheduled event.
+router.post(
+  "/:id/register",
+  authenticateToken,
+  authorizeRoles("ATTENDEE"),
+  registerForEvent
+);
 
 // Create events: Admins and Organizers only.
 router.post(

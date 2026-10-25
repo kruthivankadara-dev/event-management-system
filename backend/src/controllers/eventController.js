@@ -111,14 +111,23 @@ async function getEventById(req, res, next) {
 
   try {
     const [events] = await pool.execute(
-      `SELECT event_id, title, description, category, venue,
-        start_datetime, end_datetime, capacity,
-        registration_deadline, image_url, registration_url,
-        created_by, created_at, status
-       FROM events
-       WHERE event_id = ? AND status = 'SCHEDULED'
+      `SELECT e.event_id, e.title, e.description, e.category, e.venue,
+        e.start_datetime, e.end_datetime, e.capacity,
+        e.registration_deadline, e.image_url, e.registration_url,
+        e.created_by, e.created_at, e.status,
+        attendee_registration.registration_status AS attendee_registration_status,
+        (SELECT COUNT(*) FROM event_registrations confirmed
+         WHERE confirmed.event_id = e.event_id
+           AND confirmed.registration_status = 'CONFIRMED') AS registered_count,
+        (e.registration_deadline IS NULL OR e.registration_deadline >= CURRENT_TIMESTAMP) AS registration_open,
+        (e.start_datetime > CURRENT_TIMESTAMP) AS event_upcoming
+       FROM events e
+       LEFT JOIN event_registrations attendee_registration
+         ON attendee_registration.event_id = e.event_id
+        AND attendee_registration.attendee_id = ?
+       WHERE e.event_id = ? AND e.status = 'SCHEDULED'
        LIMIT 1`,
-      [id]
+      [req.user.id, id]
     );
 
     if (!events.length) {
@@ -129,20 +138,30 @@ async function getEventById(req, res, next) {
     }
 
     const event = events[0];
+    const capacity = Number(event.capacity);
+    const registeredCount = Number(event.registered_count || 0);
+    const remaining = Math.max(0, capacity - registeredCount);
+    const registrationOpen = Boolean(Number(event.registration_open)) &&
+      Boolean(Number(event.event_upcoming));
+    const attendeeStatus = req.user.roles.includes("ATTENDEE")
+      ? (event.attendee_registration_status || "NOT_REGISTERED")
+      : "NOT_APPLICABLE";
+
     return res.status(200).json({
       success: true,
       data: {
         event,
         availability: {
-          capacity: event.capacity,
-          registeredCount: null,
-          remaining: null,
-          status: "NOT_TRACKED"
+          capacity,
+          registeredCount,
+          remaining,
+          status: remaining === 0 ? "FULL" : registrationOpen ? "AVAILABLE" : "CLOSED"
         },
         registration: {
           status: event.registration_url ? "EXTERNAL" : "NOT_CONFIGURED",
           url: event.registration_url || null,
-          attendeeStatus: "NOT_TRACKED"
+          attendeeStatus,
+          isOpen: registrationOpen
         },
         fee: null
       }

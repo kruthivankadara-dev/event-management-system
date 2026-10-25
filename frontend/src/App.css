@@ -321,6 +321,17 @@
   background-color: #6d28d9;
 }
 
+button.register-button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.register-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 
 .event-actions {
   display: flex;

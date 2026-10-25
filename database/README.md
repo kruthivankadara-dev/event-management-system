@@ -3,5 +3,6 @@ Set up the users and roles tables from `schema.sql`, then apply the migrations i
 1. `migrations/001_create_events.sql`
 2. `migrations/002_add_event_status.sql`
 3. `migrations/003_add_event_registration_url.sql`
+4. `migrations/004_create_event_registrations.sql`
 
-The migrations are safe to rerun. They bring an existing database up to the event schema used by the application.
+The migrations are safe to rerun. They bring an existing database up to the event schema used by the application, including the attendee registrations table and its unique event/attendee constraint.
