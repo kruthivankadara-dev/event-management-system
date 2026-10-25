@@ -30,6 +30,13 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
   console.error("API error:", err.message);
+  if (err.type === "entity.parse.failed") {
+    return res.status(400).json({
+      success: false,
+      message: "Request body must contain valid JSON."
+    });
+  }
+
   res.status(500).json({
     success: false,
     message: "An unexpected server error occurred."
