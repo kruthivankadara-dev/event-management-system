@@ -4,6 +4,7 @@ const express = require("express");
 const {
   createEvent,
   getEvents,
+  getEventById,
   updateEvent,
   cancelEvent
 } = require("../controllers/eventController");
@@ -17,6 +18,9 @@ const router = express.Router();
 
 // View events: authenticated users only.
 router.get("/", authenticateToken, getEvents);
+
+// View one scheduled event: authenticated users only.
+router.get("/:id", authenticateToken, getEventById);
 
 // Create events: Admins and Organizers only.
 router.post(

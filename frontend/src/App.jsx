@@ -30,6 +30,9 @@ const [eventFilters, setEventFilters] = useState({
   venue: ""
 });
 const [selectedEventId, setSelectedEventId] = useState(null);
+const [eventDetail, setEventDetail] = useState(null);
+const [eventDetailLoading, setEventDetailLoading] = useState(false);
+const [eventDetailError, setEventDetailError] = useState("");
 
 
   
@@ -248,6 +251,44 @@ useEffect(() => {
 }, [user, eventFilters]);
 
 useEffect(() => {
+  if (!selectedEventId) {
+    setEventDetail(null);
+    setEventDetailError("");
+    setEventDetailLoading(false);
+    return undefined;
+  }
+
+  const controller = new AbortController();
+  setEventDetail(null);
+  setEventDetailError("");
+  setEventDetailLoading(true);
+
+  async function fetchEventDetail() {
+    try {
+      const token = localStorage.getItem("ems_token");
+      const response = await fetch(`${API_URL}/events/${encodeURIComponent(selectedEventId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
+      });
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.message || "Could not load event details.");
+      if (!result.data?.event) throw new Error("The server did not return event details.");
+      setEventDetail(result.data);
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        setEventDetailError(err instanceof TypeError ? "Cannot connect to the server." : err.message);
+      }
+    } finally {
+      if (!controller.signal.aborted) setEventDetailLoading(false);
+    }
+  }
+
+  fetchEventDetail();
+  return () => controller.abort();
+}, [selectedEventId, user]);
+
+useEffect(() => {
   if (user?.roles?.includes("ADMIN")) {
     fetchUsers();
   }
@@ -430,24 +471,30 @@ useEffect(() => {
 
         {selectedEventId === event.event_id && (
           <div className="event-detail">
-            <p>
-              <strong>Status:</strong> {event.status || "SCHEDULED"}
-            </p>
+            {eventDetailLoading && <p role="status">Loading event details...</p>}
+            {eventDetailError && <p className="alert error" role="alert">{eventDetailError}</p>}
+            {eventDetail?.event?.event_id === event.event_id && (() => {
+              const details = eventDetail.event;
+              const isScheduled = details.status === "SCHEDULED";
+              return <>
+              <p><strong>Event status:</strong> {details.status}</p>
+              {details.description && <p>{details.description}</p>}
+              <p><strong>Starts:</strong> {new Date(details.start_datetime).toLocaleString()}</p>
+              <p><strong>Ends:</strong> {new Date(details.end_datetime).toLocaleString()}</p>
+              <p><strong>Venue:</strong> {details.venue}</p>
+              <p><strong>Registration fee:</strong> {eventDetail.fee == null ? "Not specified" : eventDetail.fee}</p>
+              <p><strong>Availability:</strong> {eventDetail.availability?.status === "NOT_TRACKED"
+                ? `Capacity ${eventDetail.availability.capacity}; remaining places are not tracked.`
+                : "Unavailable"}</p>
+              <p><strong>Registration:</strong> {eventDetail.registration?.status === "EXTERNAL"
+                ? "External registration link available; attendee registration status is not tracked by EMS."
+                : "No registration link is configured; attendee registration status is not tracked by EMS."}</p>
 
-            {event.description && <p>{event.description}</p>}
-
-            <p>
-              <strong>Ends:</strong>{" "}
-              {new Date(event.end_datetime).toLocaleString()}
-            </p>
-
-            <p><strong>Capacity:</strong> {event.capacity}</p>
-
-            <div className="event-media">
-              {event.image_url && (
+              <div className="event-media">
+              {details.image_url && (
                 <img
-                  src={event.image_url}
-                  alt={event.title}
+                  src={details.image_url}
+                  alt={details.title}
                   style={{
                     maxWidth: "100%",
                     borderRadius: "8px",
@@ -456,10 +503,9 @@ useEffect(() => {
                 />
               )}
 
-              {event.registration_url &&
-                (event.status || "SCHEDULED") === "SCHEDULED" && (
+              {eventDetail.registration?.url && isScheduled && (
                   <a
-                    href={event.registration_url}
+                    href={eventDetail.registration.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="register-button"
@@ -469,13 +515,9 @@ useEffect(() => {
                 )}
             </div>
 
-            <p>Role: {roles.join(", ")}</p>
-            <p>Event creator: {event.created_by}</p>
-            <p>Current user ID: {user.id}</p>
-            <p>Event status: {event.status || "SCHEDULED"}</p>
             {(roles.includes("ADMIN") || roles.includes("ORGANIZER")) &&
-              event.created_by === user.id &&
-              event.status === "SCHEDULED" && (
+              details.created_by === user.id &&
+              isScheduled && (
                 <div className="event-actions">
                   <button
                     type="button"
@@ -494,6 +536,8 @@ useEffect(() => {
                   </button>
                 </div>
               )}
+              </>;
+            })()}
           </div>
         )}
       </article>

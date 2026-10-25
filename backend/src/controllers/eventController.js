@@ -97,6 +97,61 @@ function escapeLikeValue(value) {
   return value.replace(/[=%_]/g, character => `=${character}`);
 }
 
+const EVENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function getEventById(req, res, next) {
+  const { id } = req.params;
+
+  if (!EVENT_ID_PATTERN.test(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid event ID."
+    });
+  }
+
+  try {
+    const [events] = await pool.execute(
+      `SELECT event_id, title, description, category, venue,
+        start_datetime, end_datetime, capacity,
+        registration_deadline, image_url, registration_url,
+        created_by, created_at, status
+       FROM events
+       WHERE event_id = ? AND status = 'SCHEDULED'
+       LIMIT 1`,
+      [id]
+    );
+
+    if (!events.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found or unavailable."
+      });
+    }
+
+    const event = events[0];
+    return res.status(200).json({
+      success: true,
+      data: {
+        event,
+        availability: {
+          capacity: event.capacity,
+          registeredCount: null,
+          remaining: null,
+          status: "NOT_TRACKED"
+        },
+        registration: {
+          status: event.registration_url ? "EXTERNAL" : "NOT_CONFIGURED",
+          url: event.registration_url || null,
+          attendeeStatus: "NOT_TRACKED"
+        },
+        fee: null
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getEvents(req, res, next) {
   const parsed = validateEventSearchQuery(req.query);
 
@@ -247,6 +302,7 @@ async function cancelEvent(req, res, next) {
 module.exports = {
   createEvent,
   getEvents,
+  getEventById,
   updateEvent,
   cancelEvent
 };
