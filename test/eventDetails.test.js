@@ -27,14 +27,14 @@ async function requestEvent(id, rows = [], failure = null) {
 
   try {
     let forwardedError;
-    await getEventById({ params: { id } }, response, error => { forwardedError = error; });
+    await getEventById({ params: { id }, user: { id: "c937d041-7ee8-4b93-b785-f973b37ebba3", roles: ["ATTENDEE"] } }, response, error => { forwardedError = error; });
     return { response, sql, values, forwardedError };
   } finally {
     pool.execute = originalExecute;
   }
 }
 
-test("retrieves a scheduled event and reports schema-backed detail limitations", async () => {
+test("retrieves a scheduled event with capacity and attendee registration status", async () => {
   const event = {
     event_id: validId,
     title: "Campus showcase",
@@ -44,19 +44,23 @@ test("retrieves a scheduled event and reports schema-backed detail limitations",
     end_datetime: "2027-04-10 12:00:00",
     capacity: 80,
     registration_url: "https://example.com/register",
-    status: "SCHEDULED"
+    status: "SCHEDULED",
+    registered_count: 3,
+    attendee_registration_status: "CONFIRMED",
+    registration_open: 1,
+    event_upcoming: 1
   };
   const { response, sql, values } = await requestEvent(validId, [event]);
 
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(values, [validId]);
-  assert.match(sql, /event_id = \? AND status = 'SCHEDULED'/);
+  assert.deepEqual(values, ["c937d041-7ee8-4b93-b785-f973b37ebba3", validId]);
+  assert.match(sql, /e\.event_id = \? AND e\.status = 'SCHEDULED'/);
   assert.equal(response.body.data.event.title, event.title);
   assert.deepEqual(response.body.data.availability, {
-    capacity: 80, registeredCount: null, remaining: null, status: "NOT_TRACKED"
+    capacity: 80, registeredCount: 3, remaining: 77, status: "AVAILABLE"
   });
   assert.deepEqual(response.body.data.registration, {
-    status: "EXTERNAL", url: event.registration_url, attendeeStatus: "NOT_TRACKED"
+    status: "EXTERNAL", url: event.registration_url, attendeeStatus: "CONFIRMED", isOpen: true
   });
   assert.equal(response.body.data.fee, null);
 });
@@ -75,10 +79,11 @@ test("nonexistent, cancelled, and unavailable events return 404", async () => {
 });
 
 test("events without an external registration URL report registration as not configured", async () => {
-  const event = { event_id: validId, capacity: 10, registration_url: null, status: "SCHEDULED" };
+  const event = { event_id: validId, capacity: 10, registration_url: null, status: "SCHEDULED", registered_count: 0, registration_open: 1, event_upcoming: 1 };
   const { response } = await requestEvent(validId, [event]);
   assert.equal(response.body.data.registration.status, "NOT_CONFIGURED");
   assert.equal(response.body.data.registration.url, null);
+  assert.equal(response.body.data.registration.attendeeStatus, "NOT_REGISTERED");
 });
 
 test("database failures are passed to the existing error middleware", async () => {
