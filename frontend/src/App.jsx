@@ -33,6 +33,9 @@ const [selectedEventId, setSelectedEventId] = useState(null);
 const [eventDetail, setEventDetail] = useState(null);
 const [eventDetailLoading, setEventDetailLoading] = useState(false);
 const [eventDetailError, setEventDetailError] = useState("");
+const [registrationLoadingId, setRegistrationLoadingId] = useState(null);
+const [registrationMessage, setRegistrationMessage] = useState("");
+const [registrationError, setRegistrationError] = useState("");
 
 
   
@@ -261,6 +264,8 @@ useEffect(() => {
   const controller = new AbortController();
   setEventDetail(null);
   setEventDetailError("");
+  setRegistrationMessage("");
+  setRegistrationError("");
   setEventDetailLoading(true);
 
   async function fetchEventDetail() {
@@ -287,6 +292,49 @@ useEffect(() => {
   fetchEventDetail();
   return () => controller.abort();
 }, [selectedEventId, user]);
+
+async function registerForEvent(eventId) {
+  if (registrationLoadingId) return;
+
+  setRegistrationLoadingId(eventId);
+  setRegistrationMessage("");
+  setRegistrationError("");
+
+  try {
+    const token = localStorage.getItem("ems_token");
+    const response = await fetch(`${API_URL}/events/${encodeURIComponent(eventId)}/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({})
+    });
+    const result = await response.json();
+
+    if (!response.ok) throw new Error(result.message || "Could not register for this event.");
+    if (!result.data?.registration) throw new Error("The server did not confirm your registration.");
+
+    setEventDetail(current => {
+      if (current?.event?.event_id !== eventId) return current;
+      return {
+        ...current,
+        registration: {
+          ...current.registration,
+          attendeeStatus: result.data.registration.registration_status
+        },
+        availability: result.data.availability || current.availability
+      };
+    });
+    setRegistrationMessage(result.message || "You are registered for this event.");
+  } catch (err) {
+    setRegistrationError(
+      err instanceof TypeError ? "Cannot connect to the server." : err.message
+    );
+  } finally {
+    setRegistrationLoadingId(null);
+  }
+}
 
 useEffect(() => {
   if (user?.roles?.includes("ADMIN")) {
@@ -483,12 +531,21 @@ useEffect(() => {
               <p><strong>Ends:</strong> {new Date(details.end_datetime).toLocaleString()}</p>
               <p><strong>Venue:</strong> {details.venue}</p>
               <p><strong>Registration fee:</strong> {eventDetail.fee == null ? "Not specified" : eventDetail.fee}</p>
-              <p><strong>Availability:</strong> {eventDetail.availability?.status === "NOT_TRACKED"
-                ? `Capacity ${eventDetail.availability.capacity}; remaining places are not tracked.`
-                : "Unavailable"}</p>
+              <p><strong>Availability:</strong> {eventDetail.availability?.status === "AVAILABLE"
+                ? `${eventDetail.availability.remaining} places available (${eventDetail.availability.registeredCount}/${eventDetail.availability.capacity} registered).`
+                : eventDetail.availability?.status === "FULL"
+                  ? `Full (${eventDetail.availability.registeredCount}/${eventDetail.availability.capacity} registered).`
+                  : "Registration is closed for this event."}</p>
               <p><strong>Registration:</strong> {eventDetail.registration?.status === "EXTERNAL"
-                ? "External registration link available; attendee registration status is not tracked by EMS."
-                : "No registration link is configured; attendee registration status is not tracked by EMS."}</p>
+                ? "An external registration form is also available."
+                : "Registration is handled by EMS."}</p>
+              {roles.includes("ATTENDEE") && (
+                <p><strong>Your registration:</strong> {eventDetail.registration?.attendeeStatus === "CONFIRMED"
+                  ? "Registered (confirmed)."
+                  : eventDetail.registration?.attendeeStatus === "NOT_REGISTERED"
+                    ? "Not registered."
+                    : eventDetail.registration?.attendeeStatus || "Not available."}</p>
+              )}
 
               <div className="event-media">
               {details.image_url && (
@@ -510,9 +567,24 @@ useEffect(() => {
                     rel="noopener noreferrer"
                     className="register-button"
                   >
-                    Register
+                    External registration
                   </a>
                 )}
+              {roles.includes("ATTENDEE") && isScheduled &&
+                eventDetail.registration?.attendeeStatus === "NOT_REGISTERED" &&
+                eventDetail.registration?.isOpen &&
+                eventDetail.availability?.status === "AVAILABLE" && (
+                  <button
+                    type="button"
+                    className="register-button"
+                    onClick={() => registerForEvent(event.event_id)}
+                    disabled={registrationLoadingId === event.event_id}
+                  >
+                    {registrationLoadingId === event.event_id ? "Registering..." : "Register"}
+                  </button>
+                )}
+              {registrationMessage && <p className="alert success" role="status">{registrationMessage}</p>}
+              {registrationError && <p className="alert error" role="alert">{registrationError}</p>}
             </div>
 
             {(roles.includes("ADMIN") || roles.includes("ORGANIZER")) &&
