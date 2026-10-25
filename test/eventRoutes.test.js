@@ -132,3 +132,8 @@ test("cancelling an event requires authentication", async () => {
   assert.equal(response.status, 401);
 });
 
+
+test("event details require authentication", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/events/9d3dba07-c272-4f71-aedd-3fc7f4c3c589`);
+  assert.equal(response.status, 401);
+});
