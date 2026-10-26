@@ -363,3 +363,82 @@ button.register-button:disabled {
   align-self: flex-start;
   margin: 0;
 }
+
+
+
+/* Student registration form - dark theme */
+.student-registration-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  margin: 20px 0;
+  padding: 24px;
+  border: 1px solid #303b56;
+  border-radius: 12px;
+  background: #151d32;
+  color: #f1f5f9;
+}
+
+.student-registration-form h3 {
+  margin: 0 0 12px;
+  color: #c4b5fd;
+  font-size: 1.35rem;
+}
+
+.student-registration-form label {
+  margin-top: 6px;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.student-registration-form input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid #394765;
+  border-radius: 8px;
+  background: #0b1224;
+  color: #f8fafc;
+  font: inherit;
+}
+
+.student-registration-form input::placeholder {
+  color: #94a3b8;
+}
+
+.student-registration-form input:focus {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 1px;
+}
+
+.student-registration-form input:read-only {
+  background: #202b43;
+  color: #e2e8f0;
+  cursor: default;
+}
+
+.student-registration-form button {
+  align-self: flex-start;
+  margin-top: 10px;
+  border: none;
+  border-radius: 8px;
+  background: #7c3aed;
+  color: #fff;
+  padding: 12px 18px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.student-registration-form button:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.student-registration-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

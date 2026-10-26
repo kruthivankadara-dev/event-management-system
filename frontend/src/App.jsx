@@ -19,7 +19,7 @@ function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
-  
+
 const [events, setEvents] = useState([]);
 const [eventsLoading, setEventsLoading] = useState(false);
 const [eventsError, setEventsError] = useState("");
@@ -37,8 +37,14 @@ const [registrationLoadingId, setRegistrationLoadingId] = useState(null);
 const [registrationMessage, setRegistrationMessage] = useState("");
 const [registrationError, setRegistrationError] = useState("");
 
+const [studentRegistrationForm, setStudentRegistrationForm] = useState({
+  phoneNumber: "",
+  college: "",
+  department: ""
+});
 
-  
+
+
 const [eventForm, setEventForm] = useState({
   title: "",
   description: "",
@@ -293,8 +299,18 @@ useEffect(() => {
   return () => controller.abort();
 }, [selectedEventId, user]);
 
+
 async function registerForEvent(eventId) {
   if (registrationLoadingId) return;
+
+  if (
+    !studentRegistrationForm.phoneNumber.trim() ||
+    !studentRegistrationForm.college.trim() ||
+    !studentRegistrationForm.department.trim()
+  ) {
+    setRegistrationError("Please complete all student registration fields.");
+    return;
+  }
 
   setRegistrationLoadingId(eventId);
   setRegistrationMessage("");
@@ -302,21 +318,34 @@ async function registerForEvent(eventId) {
 
   try {
     const token = localStorage.getItem("ems_token");
-    const response = await fetch(`${API_URL}/events/${encodeURIComponent(eventId)}/register`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({})
-    });
+
+    const response = await fetch(
+      `${API_URL}/events/${encodeURIComponent(eventId)}/register`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(studentRegistrationForm)
+      }
+    );
+
     const result = await response.json();
 
-    if (!response.ok) throw new Error(result.message || "Could not register for this event.");
-    if (!result.data?.registration) throw new Error("The server did not confirm your registration.");
+    if (!response.ok) {
+      throw new Error(
+        result.message || "Could not register for this event."
+      );
+    }
+
+    if (!result.data?.registration) {
+      throw new Error("The server did not confirm your registration.");
+    }
 
     setEventDetail(current => {
       if (current?.event?.event_id !== eventId) return current;
+
       return {
         ...current,
         registration: {
@@ -326,15 +355,21 @@ async function registerForEvent(eventId) {
         availability: result.data.availability || current.availability
       };
     });
-    setRegistrationMessage(result.message || "You are registered for this event.");
+
+    setRegistrationMessage(
+      result.message || "You are registered for this event."
+    );
   } catch (err) {
     setRegistrationError(
-      err instanceof TypeError ? "Cannot connect to the server." : err.message
+      err instanceof TypeError
+        ? "Cannot connect to the server."
+        : err.message
     );
   } finally {
     setRegistrationLoadingId(null);
   }
 }
+
 
 useEffect(() => {
   if (user?.roles?.includes("ADMIN")) {
@@ -406,7 +441,7 @@ useEffect(() => {
       <section className="dashboard-section">
         <h2>Your dashboard</h2>
 
-        
+
 {(roles.includes("ATTENDEE") ||
   roles.includes("ADMIN") ||
   roles.includes("ORGANIZER")) && (
@@ -570,19 +605,102 @@ useEffect(() => {
                     External registration
                   </a>
                 )}
-              {roles.includes("ATTENDEE") && isScheduled &&
-                eventDetail.registration?.attendeeStatus === "NOT_REGISTERED" &&
-                eventDetail.registration?.isOpen &&
-                eventDetail.availability?.status === "AVAILABLE" && (
-                  <button
-                    type="button"
-                    className="register-button"
-                    onClick={() => registerForEvent(event.event_id)}
-                    disabled={registrationLoadingId === event.event_id}
-                  >
-                    {registrationLoadingId === event.event_id ? "Registering..." : "Register"}
-                  </button>
-                )}
+
+                {roles.includes("ATTENDEE") && isScheduled &&
+                 eventDetail.registration?.attendeeStatus === "NOT_REGISTERED" &&
+                 eventDetail.registration?.isOpen &&
+                 eventDetail.availability?.status === "AVAILABLE" && (
+    <form
+      className="student-registration-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        registerForEvent(event.event_id);
+      }}
+    >
+      <h3>Student Registration</h3>
+
+      <label htmlFor={`student-name-${event.event_id}`}>
+        Full Name
+      </label>
+      <input
+        id={`student-name-${event.event_id}`}
+        value={user?.name || ""}
+        readOnly
+      />
+
+      <label htmlFor={`student-email-${event.event_id}`}>
+        Email Address
+      </label>
+      <input
+        id={`student-email-${event.event_id}`}
+        type="email"
+        value={user?.email || ""}
+        readOnly
+      />
+
+      <label htmlFor={`student-phone-${event.event_id}`}>
+        Phone Number
+      </label>
+      <input
+        id={`student-phone-${event.event_id}`}
+        type="tel"
+        value={studentRegistrationForm.phoneNumber}
+        onChange={(e) =>
+          setStudentRegistrationForm({
+            ...studentRegistrationForm,
+            phoneNumber: e.target.value
+          })
+        }
+        placeholder="Enter your phone number"
+        required
+      />
+
+      <label htmlFor={`student-college-${event.event_id}`}>
+        College
+      </label>
+      <input
+        id={`student-college-${event.event_id}`}
+        value={studentRegistrationForm.college}
+        onChange={(e) =>
+          setStudentRegistrationForm({
+            ...studentRegistrationForm,
+            college: e.target.value
+          })
+        }
+        placeholder="Enter your college name"
+        maxLength={150}
+        required
+      />
+
+      <label htmlFor={`student-department-${event.event_id}`}>
+        Department
+      </label>
+      <input
+        id={`student-department-${event.event_id}`}
+        value={studentRegistrationForm.department}
+        onChange={(e) =>
+          setStudentRegistrationForm({
+            ...studentRegistrationForm,
+            department: e.target.value
+          })
+        }
+        placeholder="Enter your department"
+        maxLength={100}
+        required
+      />
+
+      <button
+        type="submit"
+        className="register-button"
+        disabled={registrationLoadingId === event.event_id}
+      >
+        {registrationLoadingId === event.event_id
+          ? "Registering..."
+          : "Confirm Registration"}
+      </button>
+    </form>
+  )}
+
               {registrationMessage && <p className="alert success" role="status">{registrationMessage}</p>}
               {registrationError && <p className="alert error" role="alert">{registrationError}</p>}
             </div>
@@ -716,7 +834,7 @@ useEffect(() => {
     );
   }
 
-  
+
 async function createEvent(event) {
   event.preventDefault();
   setEventMessage("");
@@ -1025,7 +1143,7 @@ function updateEventField(event) {
 
           {message && <p className="alert success">{message}</p>}
 
-          
+
 {renderDashboard()}
 
 {user.roles?.some(role => ["ADMIN", "ORGANIZER"].includes(role)) && (
@@ -1128,7 +1246,7 @@ function updateEventField(event) {
       </div>
 
       <label htmlFor="event-image">Event image URL</label>
-      
+
       <input
         id="event-image"
         name="imageUrl"
@@ -1138,7 +1256,7 @@ function updateEventField(event) {
         onChange={updateEventField}
         maxLength={2048}
       />
-      
+
 <label htmlFor="event-image-file">Or upload an image from your laptop</label>
 <input
   id="event-image-file"

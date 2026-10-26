@@ -21,14 +21,21 @@ async function registerForEvent(req, res, next) {
   }
 
   const parsed = validateRegistrationRequest(req.body);
-  if (!parsed.success) {
-    return sendError(
-      res,
-      400,
-      "Registration request must be an empty JSON object.",
-      "INVALID_REQUEST"
-    );
-  }
+
+if (!parsed.success) {
+  return res.status(400).json({
+    success: false,
+    message:
+      parsed.error.issues[0]?.message ||
+      "Please check the registration details.",
+    errors: parsed.error.issues.map(issue => ({
+      field: issue.path[0] || "registration",
+      message: issue.message
+    }))
+  });
+}
+
+const { phoneNumber, college, department } = parsed.data;
 
   const attendeeId = req.user?.id;
   if (!attendeeId || !USER_ID_PATTERN.test(attendeeId)) {
@@ -42,6 +49,29 @@ async function registerForEvent(req, res, next) {
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
+
+    const [attendees] = await connection.execute(
+  `SELECT full_name, email
+   FROM users
+   WHERE user_id = ?
+   LIMIT 1`,
+  [attendeeId]
+);
+
+if (!attendees.length) {
+  await connection.rollback();
+  transactionStarted = false;
+
+  return sendError(
+    res,
+    401,
+    "Your attendee account is no longer available. Please sign in again.",
+    "INVALID_ATTENDEE"
+  );
+}
+
+const attendeeName = attendees[0].full_name;
+const attendeeEmail = attendees[0].email;
 
     // Serialize all reservations for this event by locking its event row.
     const [events] = await connection.execute(
@@ -108,20 +138,50 @@ async function registerForEvent(req, res, next) {
     }
 
     const registrationId = randomUUID();
-    await connection.execute(
-      `INSERT INTO event_registrations
-        (registration_id, event_id, attendee_id, registration_status)
-       VALUES (?, ?, ?, 'CONFIRMED')`,
-      [registrationId, eventId, attendeeId]
-    );
+
+await connection.execute(
+  `INSERT INTO event_registrations
+    (
+      registration_id,
+      event_id,
+      attendee_id,
+      registration_status,
+      attendee_name,
+      attendee_email,
+      phone_number,
+      college,
+      department
+    )
+   VALUES (?, ?, ?, 'CONFIRMED', ?, ?, ?, ?, ?)`,
+  [
+    registrationId,
+    eventId,
+    attendeeId,
+    attendeeName,
+    attendeeEmail,
+    phoneNumber,
+    college,
+    department
+  ]
+);
 
     const [registrations] = await connection.execute(
-      `SELECT registration_id, event_id, attendee_id,
-        registration_status, registered_at, updated_at
-       FROM event_registrations
-       WHERE registration_id = ?`,
-      [registrationId]
-    );
+  `SELECT
+     registration_id,
+     event_id,
+     attendee_id,
+     registration_status,
+     attendee_name,
+     attendee_email,
+     phone_number,
+     college,
+     department,
+     registered_at,
+     updated_at
+   FROM event_registrations
+   WHERE registration_id = ?`,
+  [registrationId]
+);
 
     await connection.commit();
     transactionStarted = false;
