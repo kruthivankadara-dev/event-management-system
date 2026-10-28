@@ -1,6 +1,10 @@
 const express = require("express");
 const { authenticateToken, authorizeRoles } = require("../middleware/authMiddleware");
-const { getRegistrationTicket, checkInTicket } = require("../controllers/ticketController");
+const {
+  getRegistrationTicket,
+  validateTicket,
+  checkInTicket
+} = require("../controllers/ticketController");
 
 const router = express.Router();
 router.get(
@@ -8,6 +12,12 @@ router.get(
   authenticateToken,
   authorizeRoles("ATTENDEE"),
   getRegistrationTicket
+);
+router.post(
+  "/validate",
+  authenticateToken,
+  authorizeRoles("ADMIN", "ORGANIZER", "EVENT_STAFF"),
+  validateTicket
 );
 router.post(
   "/check-in",
