@@ -3,6 +3,8 @@ const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const imageRoutes = require("./routes/imageRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const ticketRoutes = require("./routes/ticketRoutes");
 const path = require("path");
 
 const app = express();
@@ -19,6 +21,8 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/events", eventRoutes);
+app.use("/api/v1/payments", paymentRoutes);
+app.use("/api/v1/tickets", ticketRoutes);
 app.use("/api/v1/images", imageRoutes);
 
 app.use((req, res) => {
