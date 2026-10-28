@@ -382,6 +382,28 @@ button.register-button:disabled {
   color: #f1f5f9;
 }
 
+.ticket-panel {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ticket-panel h3 {
+  margin-top: 0;
+}
+
+.ticket-qr {
+  display: block;
+  width: 256px;
+  max-width: 100%;
+  height: auto;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+}
+
 .student-registration-form h3 {
   margin: 0 0 12px;
   color: #c4b5fd;
