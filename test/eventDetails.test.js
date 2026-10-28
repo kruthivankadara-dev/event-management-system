@@ -47,6 +47,7 @@ test("retrieves a scheduled event with capacity and attendee registration status
     status: "SCHEDULED",
     registered_count: 3,
     attendee_registration_status: "CONFIRMED",
+    attendee_registration_id: "bc3d6e9e-a172-4846-9d7c-0eb174b938fe",
     registration_open: 1,
     event_upcoming: 1
   };
@@ -61,6 +62,7 @@ test("retrieves a scheduled event with capacity and attendee registration status
   });
   assert.deepEqual(response.body.data.registration, {
     status: "EXTERNAL", url: event.registration_url, attendeeStatus: "CONFIRMED",
+    registrationId: event.attendee_registration_id,
     paymentStatus: "PENDING", processingAvailable: false, isOpen: true
   });
   assert.equal(response.body.data.fee, null);

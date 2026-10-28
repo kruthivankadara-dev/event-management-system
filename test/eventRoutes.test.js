@@ -222,3 +222,18 @@ test("payment processing requires authentication and has no client status update
   });
   assert.equal(response.status, 401);
 });
+
+test("ticket retrieval requires authentication", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/tickets/registrations/9d3dba07-c272-4f71-aedd-3fc7f4c3c589`);
+  assert.equal(response.status, 401);
+});
+
+test("ticket check-in is limited to event staff and privileged event roles", async () => {
+  const token = jwt.sign({ sub: "attendee-id", roles: ["ATTENDEE"] }, process.env.JWT_SECRET);
+  const response = await fetch(`${baseUrl}/api/v1/tickets/check-in`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ticketId: "bc3d6e9e-a172-4846-9d7c-0eb174b938fe" })
+  });
+  assert.equal(response.status, 403);
+});

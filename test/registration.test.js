@@ -35,6 +35,7 @@ function createHarness({
   failOnInsert = null
 } = {}) {
   const storedRegistrations = registrations.map(row => ({ ...row }));
+  const storedTickets = [];
   const executedSql = [];
 
   let locked = false;
@@ -61,6 +62,7 @@ function createHarness({
 
   return {
     storedRegistrations,
+    storedTickets,
     event,
     executedSql,
     connectionsRequested: 0,
@@ -159,6 +161,35 @@ function createHarness({
             return [{ affectedRows: 1 }];
           }
 
+          if (/SELECT\s+registration_status\s+FROM\s+event_registrations/i.test(sql)) {
+            const registration = storedRegistrations.find(row => row.registration_id === values[0]);
+            return [[registration ? { registration_status: registration.registration_status } : undefined].filter(Boolean)];
+          }
+
+          if (/INSERT\s+IGNORE\s+INTO\s+event_tickets/i.test(sql)) {
+            if (!storedTickets.some(row => row.registration_id === values[1])) {
+              storedTickets.push({ ticket_id: values[0], registration_id: values[1], checked_in_at: null });
+            }
+            return [{ affectedRows: 1 }];
+          }
+
+          if (/FROM\s+event_tickets\s+t/i.test(sql)) {
+            const ticket = storedTickets.find(row => row.registration_id === values[0]);
+            const registration = storedRegistrations.find(row => row.registration_id === values[0]);
+            return [[ticket && registration ? {
+              ...ticket,
+              event_id: registration.event_id,
+              attendee_id: registration.attendee_id,
+              registration_status: registration.registration_status,
+              attendee_name: registration.attendee_name,
+              event_title: defaultEvent.title,
+              venue: "Main Hall",
+              start_datetime: "2027-04-10 10:00:00",
+              end_datetime: "2027-04-10 12:00:00",
+              event_status: "SCHEDULED"
+            } : undefined].filter(Boolean)];
+          }
+
           // Simulate retrieving the newly saved registration.
           if (
             /SELECT\s+r\.registration_id,\s*r\.event_id,\s*r\.attendee_id,/i.test(sql)
@@ -251,6 +282,10 @@ test("attendee registration persists and returns a confirmed registration", asyn
   assert.equal(registration.attendee_id, attendeeOne);
   assert.equal(registration.registration_status, "CONFIRMED");
   assert.equal(registration.payment_status, "PENDING");
+  assert.match(response.body.data.ticket.ticketId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  assert.equal(response.body.data.ticket.registrationId, registration.registration_id);
+  assert.match(response.body.data.ticket.qrCodeDataUrl, /^data:image\/png;base64,/);
+  assert.equal(harness.storedTickets.length, 1);
   assert.equal(registration.attendee_name, "Test Attendee");
   assert.equal(registration.attendee_email, "attendee@example.com");
   assert.equal(registration.phone_number, validBody.phoneNumber);
