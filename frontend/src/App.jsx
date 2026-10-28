@@ -350,7 +350,9 @@ async function registerForEvent(eventId) {
         ...current,
         registration: {
           ...current.registration,
-          attendeeStatus: result.data.registration.registration_status
+          attendeeStatus: result.data.registration.registration_status,
+          paymentStatus: result.data.registration.payment_status || "PENDING",
+          processingAvailable: false
         },
         availability: result.data.availability || current.availability
       };
@@ -580,6 +582,16 @@ useEffect(() => {
                   : eventDetail.registration?.attendeeStatus === "NOT_REGISTERED"
                     ? "Not registered."
                     : eventDetail.registration?.attendeeStatus || "Not available."}</p>
+              )}
+              {roles.includes("ATTENDEE") && eventDetail.registration?.attendeeStatus === "CONFIRMED" && (
+                <div className="payment-status" aria-live="polite">
+                  <p><strong>Payment status:</strong> {({
+                    PENDING: "Pending",
+                    SUCCESSFUL: "Successful",
+                    FAILED: "Failed"
+                  })[eventDetail.registration.paymentStatus || "PENDING"] || "Pending"}</p>
+                  <p>Payment status tracking is available, but payment processing is not currently configured.</p>
+                </div>
               )}
 
               <div className="event-media">
