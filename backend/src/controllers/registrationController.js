@@ -165,21 +165,31 @@ await connection.execute(
   ]
 );
 
+    // The unique registration key makes payment tracking idempotent and keeps
+    // registration and its initial pending status in the same transaction.
+    await connection.execute(
+      `INSERT INTO registration_payments (registration_id, payment_status)
+       VALUES (?, 'PENDING')`,
+      [registrationId]
+    );
+
     const [registrations] = await connection.execute(
   `SELECT
-     registration_id,
-     event_id,
-     attendee_id,
-     registration_status,
-     attendee_name,
-     attendee_email,
-     phone_number,
-     college,
-     department,
-     registered_at,
-     updated_at
-   FROM event_registrations
-   WHERE registration_id = ?`,
+     r.registration_id,
+     r.event_id,
+     r.attendee_id,
+     r.registration_status,
+     r.attendee_name,
+     r.attendee_email,
+     r.phone_number,
+     r.college,
+     r.department,
+     r.registered_at,
+     r.updated_at,
+     p.payment_status AS payment_status
+   FROM event_registrations r
+   JOIN registration_payments p ON p.registration_id = r.registration_id
+   WHERE r.registration_id = ?`,
   [registrationId]
 );
 
