@@ -1,6 +1,8 @@
 const { randomUUID } = require("crypto");
 const pool = require("../config/db");
 const { validateRegistrationRequest } = require("../validators/registrationValidators");
+const { issueTicket } = require("../services/ticketService");
+const QRCode = require("qrcode");
 
 const EVENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const USER_ID_PATTERN = EVENT_ID_PATTERN;
@@ -173,6 +175,28 @@ await connection.execute(
       [registrationId]
     );
 
+    // Events have no fee field or payment requirement in this project, so a
+    // confirmed registration is ticket-eligible even while EMS-F-009 tracks
+    // its payment status as pending.
+    const ticketRecord = await issueTicket(connection, registrationId);
+    const ticket = {
+      ticketId: ticketRecord.ticket_id,
+      registrationId: ticketRecord.registration_id,
+      eventId: ticketRecord.event_id,
+      eventTitle: ticketRecord.event_title,
+      venue: ticketRecord.venue,
+      startDateTime: ticketRecord.start_datetime,
+      endDateTime: ticketRecord.end_datetime,
+      attendeeName: ticketRecord.attendee_name,
+      issuedAt: ticketRecord.issued_at,
+      checkedInAt: ticketRecord.checked_in_at,
+      qrCodeDataUrl: await QRCode.toDataURL(ticketRecord.ticket_id, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 256
+      })
+    };
+
     const [registrations] = await connection.execute(
   `SELECT
      r.registration_id,
@@ -201,6 +225,7 @@ await connection.execute(
       message: "Registration completed successfully.",
       data: {
         registration: registrations[0],
+        ticket,
         availability: {
           capacity: Number(event.capacity),
           registeredCount: registeredCount + 1,

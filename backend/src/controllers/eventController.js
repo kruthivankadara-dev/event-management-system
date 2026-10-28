@@ -116,6 +116,7 @@ async function getEventById(req, res, next) {
         e.registration_deadline, e.image_url, e.registration_url,
         e.created_by, e.created_at, e.status,
         attendee_registration.registration_status AS attendee_registration_status,
+        attendee_registration.registration_id AS attendee_registration_id,
         attendee_payment.payment_status AS attendee_payment_status,
         (SELECT COUNT(*) FROM event_registrations confirmed
          WHERE confirmed.event_id = e.event_id
@@ -164,6 +165,9 @@ async function getEventById(req, res, next) {
           status: event.registration_url ? "EXTERNAL" : "NOT_CONFIGURED",
           url: event.registration_url || null,
           attendeeStatus,
+          registrationId: attendeeStatus === "CONFIRMED"
+            ? event.attendee_registration_id
+            : null,
           paymentStatus: attendeeStatus === "CONFIRMED"
             ? (event.attendee_payment_status || "PENDING")
             : null,

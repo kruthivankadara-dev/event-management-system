@@ -36,6 +36,12 @@ const [eventDetailError, setEventDetailError] = useState("");
 const [registrationLoadingId, setRegistrationLoadingId] = useState(null);
 const [registrationMessage, setRegistrationMessage] = useState("");
 const [registrationError, setRegistrationError] = useState("");
+const [ticketLoading, setTicketLoading] = useState(false);
+const [ticketError, setTicketError] = useState("");
+const [checkInTicketId, setCheckInTicketId] = useState("");
+const [checkInLoading, setCheckInLoading] = useState(false);
+const [checkInMessage, setCheckInMessage] = useState("");
+const [checkInError, setCheckInError] = useState("");
 
 const [studentRegistrationForm, setStudentRegistrationForm] = useState({
   phoneNumber: "",
@@ -272,6 +278,8 @@ useEffect(() => {
   setEventDetailError("");
   setRegistrationMessage("");
   setRegistrationError("");
+  setTicketLoading(false);
+  setTicketError("");
   setEventDetailLoading(true);
 
   async function fetchEventDetail() {
@@ -285,7 +293,36 @@ useEffect(() => {
 
       if (!response.ok) throw new Error(result.message || "Could not load event details.");
       if (!result.data?.event) throw new Error("The server did not return event details.");
-      setEventDetail(result.data);
+      const detail = result.data;
+      const registration = detail.registration;
+      if (
+        user?.roles?.includes("ATTENDEE") &&
+        registration?.attendeeStatus === "CONFIRMED" &&
+        registration.registrationId
+      ) {
+        setTicketLoading(true);
+        setTicketError("");
+        try {
+          const ticketResponse = await fetch(
+            `${API_URL}/tickets/registrations/${encodeURIComponent(registration.registrationId)}`,
+            { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }
+          );
+          const ticketResult = await ticketResponse.json();
+          if (!ticketResponse.ok || !ticketResult.data?.ticket) {
+            throw new Error(ticketResult.message || "Could not load your ticket.");
+          }
+          detail.registration.ticket = ticketResult.data.ticket;
+        } catch (ticketFetchError) {
+          if (!controller.signal.aborted) {
+            setTicketError(ticketFetchError instanceof TypeError
+              ? "Cannot connect to the ticket service."
+              : ticketFetchError.message);
+          }
+        } finally {
+          if (!controller.signal.aborted) setTicketLoading(false);
+        }
+      }
+      setEventDetail(detail);
     } catch (err) {
       if (!controller.signal.aborted) {
         setEventDetailError(err instanceof TypeError ? "Cannot connect to the server." : err.message);
@@ -315,6 +352,7 @@ async function registerForEvent(eventId) {
   setRegistrationLoadingId(eventId);
   setRegistrationMessage("");
   setRegistrationError("");
+    setTicketError("");
 
   try {
     const token = localStorage.getItem("ems_token");
@@ -352,7 +390,9 @@ async function registerForEvent(eventId) {
           ...current.registration,
           attendeeStatus: result.data.registration.registration_status,
           paymentStatus: result.data.registration.payment_status || "PENDING",
-          processingAvailable: false
+          processingAvailable: false,
+          registrationId: result.data.registration.registration_id,
+          ticket: result.data.ticket
         },
         availability: result.data.availability || current.availability
       };
@@ -369,6 +409,33 @@ async function registerForEvent(eventId) {
     );
   } finally {
     setRegistrationLoadingId(null);
+  }
+}
+
+async function checkInTicket(event) {
+  event.preventDefault();
+  setCheckInMessage("");
+  setCheckInError("");
+  setCheckInLoading(true);
+  try {
+    const response = await fetch(`${API_URL}/tickets/check-in`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+      },
+      body: JSON.stringify({ ticketId: checkInTicketId.trim() })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Could not check in this ticket.");
+    setCheckInMessage(
+      `${result.data.ticket.attendeeName} checked in for ${result.data.ticket.eventTitle}.`
+    );
+    setCheckInTicketId("");
+  } catch (err) {
+    setCheckInError(err instanceof TypeError ? "Cannot connect to the server." : err.message);
+  } finally {
+    setCheckInLoading(false);
   }
 }
 
@@ -593,6 +660,28 @@ useEffect(() => {
                   <p>Payment status tracking is available, but payment processing is not currently configured.</p>
                 </div>
               )}
+              {roles.includes("ATTENDEE") && eventDetail.registration?.attendeeStatus === "CONFIRMED" && (
+                <section className="ticket-panel" aria-live="polite">
+                  <h3>Your event ticket</h3>
+                  {ticketLoading && <p role="status">Loading your ticket…</p>}
+                  {ticketError && <p className="alert error" role="alert">{ticketError}</p>}
+                  {eventDetail.registration.ticket && (
+                    <>
+                      <p><strong>Ticket ID:</strong> {eventDetail.registration.ticket.ticketId}</p>
+                      <p>{eventDetail.registration.ticket.eventTitle} · {eventDetail.registration.ticket.venue}</p>
+                      {eventDetail.registration.ticket.checkedInAt && (
+                        <p>Checked in at {new Date(eventDetail.registration.ticket.checkedInAt).toLocaleString()}.</p>
+                      )}
+                      <img
+                        className="ticket-qr"
+                        src={eventDetail.registration.ticket.qrCodeDataUrl}
+                        alt={`QR code for ticket ${eventDetail.registration.ticket.ticketId}`}
+                      />
+                      <p>Show this QR code to event staff at check-in.</p>
+                    </>
+                  )}
+                </section>
+              )}
 
               <div className="event-media">
               {details.image_url && (
@@ -761,10 +850,22 @@ useEffect(() => {
         {roles.includes("EVENT_STAFF") && (
           <div className="dashboard-panel">
             <h3>Event staff dashboard</h3>
-            <p>Support event operations, validate tickets, and record attendance.</p>
-            <p className="subtitle">
-              Ticket validation and attendance features can be connected here.
-            </p>
+            <p>Scan the attendee QR code and enter its ticket ID to record check-in.</p>
+            <form onSubmit={checkInTicket}>
+              <label htmlFor="check-in-ticket-id">Scanned ticket ID</label>
+              <input
+                id="check-in-ticket-id"
+                value={checkInTicketId}
+                onChange={event => setCheckInTicketId(event.target.value)}
+                autoComplete="off"
+                required
+              />
+              {checkInError && <p className="alert error" role="alert">{checkInError}</p>}
+              {checkInMessage && <p className="alert success" role="status">{checkInMessage}</p>}
+              <button type="submit" disabled={checkInLoading}>
+                {checkInLoading ? "Checking in…" : "Check in attendee"}
+              </button>
+            </form>
           </div>
         )}
 
