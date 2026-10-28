@@ -155,14 +155,18 @@ function createHarness({
             return [{ affectedRows: 1 }];
           }
 
+          if (/INSERT\s+INTO\s+registration_payments/i.test(sql)) {
+            return [{ affectedRows: 1 }];
+          }
+
           // Simulate retrieving the newly saved registration.
           if (
-            /SELECT\s+registration_id,\s*event_id,\s*attendee_id,/i.test(sql)
+            /SELECT\s+r\.registration_id,\s*r\.event_id,\s*r\.attendee_id,/i.test(sql)
           ) {
             return [
               storedRegistrations.filter(
                 row => row.registration_id === values[0]
-              )
+              ).map(row => ({ ...row, payment_status: "PENDING" }))
             ];
           }
 
@@ -246,6 +250,7 @@ test("attendee registration persists and returns a confirmed registration", asyn
   assert.equal(registration.event_id, eventId);
   assert.equal(registration.attendee_id, attendeeOne);
   assert.equal(registration.registration_status, "CONFIRMED");
+  assert.equal(registration.payment_status, "PENDING");
   assert.equal(registration.attendee_name, "Test Attendee");
   assert.equal(registration.attendee_email, "attendee@example.com");
   assert.equal(registration.phone_number, validBody.phoneNumber);
@@ -255,6 +260,7 @@ test("attendee registration persists and returns a confirmed registration", asyn
   assert.equal(harness.storedRegistrations.length, 1);
   assert.ok(harness.executedSql.some(sql => /FOR UPDATE/.test(sql)));
   assert.ok(harness.executedSql.some(sql => /COUNT\s*\(/i.test(sql)));
+  assert.ok(harness.executedSql.some(sql => /INSERT\s+INTO\s+registration_payments/i.test(sql)));
 
   assert.deepEqual(response.body.data.availability, {
     capacity: 2,

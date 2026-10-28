@@ -60,7 +60,8 @@ test("retrieves a scheduled event with capacity and attendee registration status
     capacity: 80, registeredCount: 3, remaining: 77, status: "AVAILABLE"
   });
   assert.deepEqual(response.body.data.registration, {
-    status: "EXTERNAL", url: event.registration_url, attendeeStatus: "CONFIRMED", isOpen: true
+    status: "EXTERNAL", url: event.registration_url, attendeeStatus: "CONFIRMED",
+    paymentStatus: "PENDING", processingAvailable: false, isOpen: true
   });
   assert.equal(response.body.data.fee, null);
 });
