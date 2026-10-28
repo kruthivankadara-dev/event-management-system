@@ -202,3 +202,23 @@ test("event registration rejects malformed JSON with a client error", async () =
   assert.equal(response.status, 400);
   assert.equal(result.message, "Request body must contain valid JSON.");
 });
+
+test("payment status requires authentication", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/payments/registrations/9d3dba07-c272-4f71-aedd-3fc7f4c3c589`);
+  assert.equal(response.status, 401);
+});
+
+test("payment status is restricted to attendees", async () => {
+  const token = jwt.sign({ sub: "organizer-id", roles: ["ORGANIZER"] }, process.env.JWT_SECRET);
+  const response = await fetch(`${baseUrl}/api/v1/payments/registrations/9d3dba07-c272-4f71-aedd-3fc7f4c3c589`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  assert.equal(response.status, 403);
+});
+
+test("payment processing requires authentication and has no client status update route", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/payments/registrations/9d3dba07-c272-4f71-aedd-3fc7f4c3c589/process`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "SUCCESSFUL" })
+  });
+  assert.equal(response.status, 401);
+});

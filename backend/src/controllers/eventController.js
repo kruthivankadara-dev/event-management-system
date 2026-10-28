@@ -116,6 +116,7 @@ async function getEventById(req, res, next) {
         e.registration_deadline, e.image_url, e.registration_url,
         e.created_by, e.created_at, e.status,
         attendee_registration.registration_status AS attendee_registration_status,
+        attendee_payment.payment_status AS attendee_payment_status,
         (SELECT COUNT(*) FROM event_registrations confirmed
          WHERE confirmed.event_id = e.event_id
            AND confirmed.registration_status = 'CONFIRMED') AS registered_count,
@@ -125,6 +126,8 @@ async function getEventById(req, res, next) {
        LEFT JOIN event_registrations attendee_registration
          ON attendee_registration.event_id = e.event_id
         AND attendee_registration.attendee_id = ?
+       LEFT JOIN registration_payments attendee_payment
+         ON attendee_payment.registration_id = attendee_registration.registration_id
        WHERE e.event_id = ? AND e.status = 'SCHEDULED'
        LIMIT 1`,
       [req.user.id, id]
@@ -161,6 +164,10 @@ async function getEventById(req, res, next) {
           status: event.registration_url ? "EXTERNAL" : "NOT_CONFIGURED",
           url: event.registration_url || null,
           attendeeStatus,
+          paymentStatus: attendeeStatus === "CONFIRMED"
+            ? (event.attendee_payment_status || "PENDING")
+            : null,
+          processingAvailable: false,
           isOpen: registrationOpen
         },
         fee: null
