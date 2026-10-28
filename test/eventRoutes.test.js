@@ -233,7 +233,30 @@ test("ticket check-in is limited to event staff and privileged event roles", asy
   const response = await fetch(`${baseUrl}/api/v1/tickets/check-in`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ ticketId: "bc3d6e9e-a172-4846-9d7c-0eb174b938fe" })
+    body: JSON.stringify({ ticketId: "bc3d6e9e-a172-4846-9d7c-0eb174b938fe", eventId: "9d3dba07-c272-4f71-aedd-3fc7f4c3c589" })
   });
   assert.equal(response.status, 403);
+});
+
+test("ticket validation requires staff authorization and accepts authorized staff", async () => {
+  const unauthenticated = await fetch(`${baseUrl}/api/v1/tickets/validate`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+  });
+  assert.equal(unauthenticated.status, 401);
+
+  const attendeeToken = jwt.sign({ sub: "attendee-id", roles: ["ATTENDEE"] }, process.env.JWT_SECRET);
+  const forbidden = await fetch(`${baseUrl}/api/v1/tickets/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${attendeeToken}` },
+    body: JSON.stringify({ ticketId: "bad-id", eventId: "bad-id" })
+  });
+  assert.equal(forbidden.status, 403);
+
+  const staffToken = jwt.sign({ sub: "staff-id", roles: ["EVENT_STAFF"] }, process.env.JWT_SECRET);
+  const allowed = await fetch(`${baseUrl}/api/v1/tickets/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${staffToken}` },
+    body: JSON.stringify({ ticketId: "bad-id", eventId: "bad-id" })
+  });
+  assert.equal(allowed.status, 400);
 });

@@ -7,6 +7,7 @@ Set up the users and roles tables from `schema.sql`, then apply the migrations i
 5. `migrations/005_add_student_registration_details.sql`
 6. `migrations/006_create_registration_payments.sql`
 7. `migrations/007_create_event_tickets.sql`
+8. `migrations/008_add_ticket_checkin_validation.sql`
 
 The migrations are safe to rerun. They bring an existing database up to the event schema used by the application, including the attendee registrations table and its unique event/attendee constraint.
 
@@ -15,3 +16,5 @@ Migration 006 creates one payment status row per EMS registration and initialize
 Migration 007 creates a unique ticket record per registration. Tickets are issued for confirmed registrations; existing confirmed registrations receive a ticket when the attendee first retrieves it. Payment is not a prerequisite because the current event schema has no fee or required-payment field.
 
 Run migration 007 after migration 006 before starting the ticket endpoints.
+
+Migration 008 adds an active/revoked ticket state and an optional check-in actor reference. Check-in requires an active ticket, a confirmed registration, a scheduled event, and a matching selected event.

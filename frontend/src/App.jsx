@@ -39,6 +39,7 @@ const [registrationError, setRegistrationError] = useState("");
 const [ticketLoading, setTicketLoading] = useState(false);
 const [ticketError, setTicketError] = useState("");
 const [checkInTicketId, setCheckInTicketId] = useState("");
+const [checkInEventId, setCheckInEventId] = useState("");
 const [checkInLoading, setCheckInLoading] = useState(false);
 const [checkInMessage, setCheckInMessage] = useState("");
 const [checkInError, setCheckInError] = useState("");
@@ -424,7 +425,7 @@ async function checkInTicket(event) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${localStorage.getItem("ems_token")}`
       },
-      body: JSON.stringify({ ticketId: checkInTicketId.trim() })
+      body: JSON.stringify({ qrCode: checkInTicketId.trim(), eventId: checkInEventId })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || "Could not check in this ticket.");
@@ -847,17 +848,30 @@ useEffect(() => {
           </div>
         )}
 
-        {roles.includes("EVENT_STAFF") && (
+        {roles.some(role => ["EVENT_STAFF", "ORGANIZER", "ADMIN"].includes(role)) && (
           <div className="dashboard-panel">
-            <h3>Event staff dashboard</h3>
+            <h3>Event check-in</h3>
             <p>Scan the attendee QR code and enter its ticket ID to record check-in.</p>
             <form onSubmit={checkInTicket}>
-              <label htmlFor="check-in-ticket-id">Scanned ticket ID</label>
+              <label htmlFor="check-in-event-id">Event</label>
+              <select
+                id="check-in-event-id"
+                value={checkInEventId}
+                onChange={event => setCheckInEventId(event.target.value)}
+                required
+              >
+                <option value="">Select the event</option>
+                {events.filter(item => item.status === "SCHEDULED").map(item => (
+                  <option key={item.event_id} value={item.event_id}>{item.title}</option>
+                ))}
+              </select>
+              <label htmlFor="check-in-ticket-id">Ticket ID or scanned QR contents</label>
               <input
                 id="check-in-ticket-id"
                 value={checkInTicketId}
                 onChange={event => setCheckInTicketId(event.target.value)}
                 autoComplete="off"
+                maxLength={64}
                 required
               />
               {checkInError && <p className="alert error" role="alert">{checkInError}</p>}
