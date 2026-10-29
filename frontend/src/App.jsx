@@ -49,6 +49,10 @@ const [notificationsError, setNotificationsError] = useState("");
 const [notificationMessage, setNotificationMessage] = useState("");
 const [reminderEventId, setReminderEventId] = useState(null);
 const [reminderFeedback, setReminderFeedback] = useState("");
+const [attendeeListEventId, setAttendeeListEventId] = useState(null);
+const [attendeeList, setAttendeeList] = useState([]);
+const [attendeeListLoading, setAttendeeListLoading] = useState(false);
+const [attendeeListError, setAttendeeListError] = useState("");
 
 const [studentRegistrationForm, setStudentRegistrationForm] = useState({
   phoneNumber: "",
@@ -322,6 +326,25 @@ async function sendEventReminder(eventId) {
     setReminderFeedback(err instanceof TypeError ? "Cannot connect to the notification service." : err.message);
   } finally {
     setReminderEventId(null);
+  }
+}
+
+async function loadAttendeeList(eventId) {
+  setAttendeeListEventId(eventId);
+  setAttendeeList([]);
+  setAttendeeListError("");
+  setAttendeeListLoading(true);
+  try {
+    const response = await fetch(`${API_URL}/events/${encodeURIComponent(eventId)}/attendees`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("ems_token")}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Could not load the attendee list.");
+    setAttendeeList(result.data?.attendees || []);
+  } catch (err) {
+    setAttendeeListError(err instanceof TypeError ? "Cannot connect to the attendee list service." : err.message);
+  } finally {
+    setAttendeeListLoading(false);
   }
 }
 
@@ -722,6 +745,71 @@ useEffect(() => {
           </button>
         )}
         {reminderFeedback && <p role="status">{reminderFeedback}</p>}
+
+        {(roles.includes("ADMIN") || (roles.includes("ORGANIZER") && event.created_by === user.id)) && (
+          <button
+            type="button"
+            onClick={() => attendeeListEventId === event.event_id
+              ? setAttendeeListEventId(null)
+              : loadAttendeeList(event.event_id)}
+            aria-expanded={attendeeListEventId === event.event_id}
+          >
+            {attendeeListEventId === event.event_id ? "Hide attendees" : "View attendee list"}
+          </button>
+        )}
+        {attendeeListEventId === event.event_id && (
+          <section className="attendee-list-panel" aria-label={`Attendees for ${event.title}`}>
+            <div className="attendee-list-heading">
+              <h5>Attendees</h5>
+              <button type="button" onClick={() => loadAttendeeList(event.event_id)} disabled={attendeeListLoading}>
+                {attendeeListLoading ? "Refreshing..." : "Refresh list"}
+              </button>
+            </div>
+            {attendeeListLoading && <p role="status">Loading attendee list...</p>}
+            {attendeeListError && <p className="alert error" role="alert">{attendeeListError}</p>}
+            {!attendeeListLoading && !attendeeListError && attendeeList.length === 0 && (
+              <p role="status">No attendees have registered for this event.</p>
+            )}
+            {!attendeeListLoading && !attendeeListError && attendeeList.length > 0 && (
+              <div className="attendee-table-wrap">
+                <table className="attendee-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Attendee</th>
+                      <th scope="col">Contact</th>
+                      <th scope="col">Registration</th>
+                      <th scope="col">Registered</th>
+                      <th scope="col">Attendance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendeeList.map(attendee => (
+                      <tr key={attendee.registration_id}>
+                        <td>
+                          <strong>{attendee.attendee_name || "Name unavailable"}</strong>
+                          {(attendee.college || attendee.department) && (
+                            <small>{[attendee.college, attendee.department].filter(Boolean).join(" · ")}</small>
+                          )}
+                        </td>
+                        <td>
+                          {attendee.attendee_email || "Email unavailable"}
+                          {attendee.phone_number && <small>{attendee.phone_number}</small>}
+                        </td>
+                        <td>{attendee.registration_status}</td>
+                        <td>{attendee.registered_at ? new Date(attendee.registered_at).toLocaleString() : "—"}</td>
+                        <td>
+                          {attendee.attendance_status === "CHECKED_IN"
+                            ? `Checked in${attendee.checked_in_at ? ` · ${new Date(attendee.checked_in_at).toLocaleString()}` : ""}`
+                            : attendee.ticket_status === "REVOKED" ? "Ticket revoked" : "Not checked in"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
         {selectedEventId === event.event_id && (
           <div className="event-detail">

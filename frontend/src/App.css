@@ -499,3 +499,57 @@ button.register-button:disabled {
   padding-left: 0.75rem;
   background: #f8fbff;
 }
+
+.attendee-list-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #394765;
+  border-radius: 10px;
+  background: #10182b;
+}
+
+.attendee-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.attendee-list-heading h5 {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 1rem;
+}
+
+.attendee-table-wrap {
+  overflow-x: auto;
+}
+
+.attendee-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.attendee-table th,
+.attendee-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #293650;
+  vertical-align: top;
+}
+
+.attendee-table th {
+  color: #c4b5fd;
+  font-size: 0.8rem;
+}
+
+.attendee-table td {
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.attendee-table td small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #a8b0c5;
+}

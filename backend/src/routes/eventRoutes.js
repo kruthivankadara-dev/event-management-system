@@ -5,6 +5,7 @@ const {
   createEvent,
   getEvents,
   getEventById,
+  getEventAttendees,
   updateEvent,
   cancelEvent
 } = require("../controllers/eventController");
@@ -19,6 +20,14 @@ const router = express.Router();
 
 // View events: authenticated users only.
 router.get("/", authenticateToken, getEvents);
+
+// Organizers may view registrations for their own events; admins may view all.
+router.get(
+  "/:id/attendees",
+  authenticateToken,
+  authorizeRoles("ADMIN", "ORGANIZER"),
+  getEventAttendees
+);
 
 // View one scheduled event: authenticated users only.
 router.get("/:id", authenticateToken, getEventById);

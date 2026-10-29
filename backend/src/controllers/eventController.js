@@ -184,6 +184,64 @@ async function getEventById(req, res, next) {
   }
 }
 
+async function getEventAttendees(req, res, next) {
+  const { id } = req.params;
+
+  if (!EVENT_ID_PATTERN.test(id)) {
+    return res.status(400).json({ success: false, message: "Invalid event ID." });
+  }
+
+  try {
+    const [events] = await pool.execute(
+      `SELECT event_id, title, created_by
+       FROM events
+       WHERE event_id = ?
+       LIMIT 1`,
+      [id]
+    );
+
+    if (!events.length) {
+      return res.status(404).json({ success: false, message: "Event not found." });
+    }
+
+    const event = events[0];
+    const isAdmin = req.user.roles.includes("ADMIN");
+    if (!isAdmin && event.created_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "You may only view attendee lists for events you own."
+      });
+    }
+
+    const [attendees] = await pool.execute(
+      `SELECT r.registration_id, r.attendee_name, r.attendee_email,
+              r.phone_number, r.college, r.department,
+              r.registration_status, r.registered_at, r.updated_at,
+              t.ticket_status,
+              t.checked_in_at,
+              CASE
+                WHEN t.checked_in_at IS NOT NULL THEN 'CHECKED_IN'
+                ELSE 'NOT_CHECKED_IN'
+              END AS attendance_status
+       FROM event_registrations r
+       LEFT JOIN event_tickets t ON t.registration_id = r.registration_id
+       WHERE r.event_id = ?
+       ORDER BY r.registered_at ASC, r.registration_id ASC`,
+      [id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        event: { event_id: event.event_id, title: event.title },
+        attendees
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function getEvents(req, res, next) {
   const parsed = validateEventSearchQuery(req.query);
 
@@ -395,6 +453,7 @@ module.exports = {
   createEvent,
   getEvents,
   getEventById,
+  getEventAttendees,
   updateEvent,
   cancelEvent
 };
