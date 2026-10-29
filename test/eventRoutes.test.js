@@ -138,6 +138,21 @@ test("event details require authentication", async () => {
   assert.equal(response.status, 401);
 });
 
+test("attendee lists require authentication and organizer/admin authorization", async () => {
+  const eventId = "9d3dba07-c272-4f71-aedd-3fc7f4c3c589";
+  const anonymous = await fetch(`${baseUrl}/api/v1/events/${eventId}/attendees`);
+  assert.equal(anonymous.status, 401);
+
+  const token = jwt.sign(
+    { sub: "attendee-id", roles: ["ATTENDEE"] },
+    process.env.JWT_SECRET
+  );
+  const attendee = await fetch(`${baseUrl}/api/v1/events/${eventId}/attendees`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  assert.equal(attendee.status, 403);
+});
+
 test("event registration requires authentication", async () => {
   const response = await fetch(`${baseUrl}/api/v1/events/9d3dba07-c272-4f71-aedd-3fc7f4c3c589/register`, {
     method: "POST",
