@@ -9,6 +9,7 @@ Set up the users and roles tables from `schema.sql`, then apply the migrations i
 7. `migrations/007_create_event_tickets.sql`
 8. `migrations/008_add_ticket_checkin_validation.sql`
 9. `migrations/009_create_event_notifications.sql`
+10. `migrations/010_create_event_feedback.sql`
 
 The migrations are safe to rerun. They bring an existing database up to the event schema used by the application, including the attendee registrations table and its unique event/attendee constraint.
 
@@ -21,3 +22,5 @@ Run migration 007 after migration 006 before starting the ticket endpoints.
 Migration 008 adds an active/revoked ticket state and an optional check-in actor reference. Check-in requires an active ticket, a confirmed registration, a scheduled event, and a matching selected event.
 
 Migration 009 adds persistent, recipient-scoped in-app notifications. No email provider is configured; reminder notifications are sent on demand by an event owner or administrator.
+
+Migration 010 adds one feedback record per attendee and event. Feedback is limited to ratings from 1 through 5 and is linked to the attendee's confirmed registration. Apply it after migration 009.

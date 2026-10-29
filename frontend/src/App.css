@@ -553,3 +553,50 @@ button.register-button:disabled {
   margin-top: 0.25rem;
   color: #a8b0c5;
 }
+
+.feedback-panel {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #394765;
+  border-radius: 10px;
+  background: #10182b;
+}
+
+.feedback-panel h3 {
+  margin-top: 0;
+  color: #e2e8f0;
+}
+
+.event-feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.event-feedback-form label {
+  color: #dce1ef;
+  font-weight: 600;
+}
+
+.event-feedback-form select,
+.event-feedback-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 1px solid #394765;
+  border-radius: 8px;
+  background: #0b1224;
+  color: #f8fafc;
+  font: inherit;
+}
+
+.event-feedback-form button {
+  align-self: flex-start;
+  margin-top: 0.5rem;
+}
+
+.feedback-submitted {
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: #18243a;
+}
