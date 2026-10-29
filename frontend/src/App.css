@@ -600,3 +600,92 @@ button.register-button:disabled {
   border-radius: 8px;
   background: #18243a;
 }
+
+.report-panel {
+  margin-bottom: 1rem;
+}
+
+.report-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.report-filters > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.report-filters input,
+.report-filters select {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #394765;
+  border-radius: 8px;
+  background: #0b1224;
+  color: #f8fafc;
+  font: inherit;
+}
+
+.report-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.report-summary-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem;
+  border: 1px solid #394765;
+  border-radius: 8px;
+  background: #10182b;
+}
+
+.report-summary-grid span {
+  color: #a8b0c5;
+  font-size: 0.8rem;
+}
+
+.report-summary-grid strong {
+  color: #e2e8f0;
+  font-size: 1.3rem;
+}
+
+.report-table-wrap {
+  overflow-x: auto;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.report-table th,
+.report-table td {
+  padding: 0.7rem;
+  border-bottom: 1px solid #293650;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.report-table th {
+  color: #c4b5fd;
+  font-size: 0.8rem;
+}
+
+.report-table td {
+  color: #e2e8f0;
+}
+
+.report-table td:first-child small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #a8b0c5;
+}
