@@ -4,9 +4,11 @@ const {
   validateEvent,
   validateEventSearchQuery
 } = require("../validators/eventValidators");
+const { notifyEventAttendees } = require("../services/notificationService");
 
 function toMysqlDateTime(value) {
-  return value.replace("T", " ").slice(0, 19);
+  const formatted = value.replace("T", " ").slice(0, 19);
+  return formatted.length === 16 ? `${formatted}:00` : formatted;
 }
 
 async function createEvent(req, res, next) {
@@ -264,6 +266,19 @@ async function updateEvent(req, res, next) {
   const event = parsed.data;
 
   try {
+    const [currentRows] = await pool.execute(
+      `SELECT event_id, title, description, category, venue,
+              DATE_FORMAT(start_datetime, '%Y-%m-%d %H:%i:%s') AS start_datetime,
+              DATE_FORMAT(end_datetime, '%Y-%m-%d %H:%i:%s') AS end_datetime,
+              DATE_FORMAT(registration_deadline, '%Y-%m-%d %H:%i:%s') AS registration_deadline,
+              registration_url
+       FROM events WHERE event_id = ? AND created_by = ? AND status = 'SCHEDULED' LIMIT 1`,
+      [req.params.id, req.user.id]
+    );
+    if (!currentRows.length) {
+      return res.status(404).json({ success: false, message: "Event not found, not owned by you, or already cancelled." });
+    }
+    const previous = currentRows[0];
     const [result] = await pool.execute(
       `UPDATE events
        SET title = ?, description = ?, category = ?, venue = ?,
@@ -295,6 +310,33 @@ async function updateEvent(req, res, next) {
       });
     }
 
+    const updated = {
+      ...event,
+      event_id: req.params.id,
+      venue: event.venue,
+      start_datetime: toMysqlDateTime(event.startDateTime),
+      end_datetime: toMysqlDateTime(event.endDateTime)
+    };
+    const scheduleChanged = String(previous.start_datetime) !== updated.start_datetime ||
+      String(previous.end_datetime) !== updated.end_datetime;
+    const importantChanged = scheduleChanged ||
+      ["title", "description", "category", "venue"].some(key => String(previous[key] ?? "") !== String(event[key] ?? "")) ||
+      String(previous.registration_deadline ?? "") !== String(event.registrationDeadline ? toMysqlDateTime(event.registrationDeadline) : "") ||
+      String(previous.registration_url ?? "") !== String(event.registrationUrl ?? "");
+    if (importantChanged) {
+      try {
+        await notifyEventAttendees({
+          event: updated,
+          type: scheduleChanged ? "EVENT_POSTPONED" : "EVENT_UPDATED",
+          title: scheduleChanged ? "Event schedule changed" : "Important event update",
+          prefix: scheduleChanged ? "The event schedule has changed" : "Important event update",
+          revision: `${updated.title}:${updated.start_datetime}:${updated.end_datetime}:${updated.venue}:${updated.description}`
+        });
+      } catch (notificationError) {
+        console.error("Event update notification could not be stored.", notificationError.code || "DATABASE_ERROR");
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Event updated successfully."
@@ -306,6 +348,12 @@ async function updateEvent(req, res, next) {
 
 async function cancelEvent(req, res, next) {
   try {
+    const [eventRows] = await pool.execute(
+      `SELECT event_id, title, venue, start_datetime, end_datetime
+       FROM events WHERE event_id = ? AND created_by = ? AND status = 'SCHEDULED' LIMIT 1`,
+      [req.params.id, req.user.id]
+    );
+    const event = eventRows[0];
     const [result] = await pool.execute(
       `UPDATE events
        SET status = 'CANCELLED'
@@ -318,6 +366,20 @@ async function cancelEvent(req, res, next) {
         success: false,
         message: "Event not found, not owned by you, or already cancelled."
       });
+    }
+
+    if (event) {
+      try {
+        await notifyEventAttendees({
+          event,
+          type: "EVENT_CANCELLED",
+          title: "Event cancelled",
+          prefix: "This event has been cancelled",
+          revision: "cancelled"
+        });
+      } catch (notificationError) {
+        console.error("Event cancellation notification could not be stored.", notificationError.code || "DATABASE_ERROR");
+      }
     }
 
     return res.status(200).json({

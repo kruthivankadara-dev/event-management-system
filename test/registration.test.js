@@ -9,6 +9,7 @@ const path = require("node:path");
 
 const pool = require("../backend/src/config/db");
 const { registerForEvent } = require("../backend/src/controllers/registrationController");
+const notificationService = require("../backend/src/services/notificationService");
 
 const eventId = "9d3dba07-c272-4f71-aedd-3fc7f4c3c589";
 const attendeeOne = "c937d041-7ee8-4b93-b785-f973b37ebba3";
@@ -37,6 +38,8 @@ function createHarness({
   const storedRegistrations = registrations.map(row => ({ ...row }));
   const storedTickets = [];
   const executedSql = [];
+  const notifications = [];
+  let committed = false;
 
   let locked = false;
   const waiters = [];
@@ -65,6 +68,8 @@ function createHarness({
     storedTickets,
     event,
     executedSql,
+    notifications,
+    get committed() { return committed; },
     connectionsRequested: 0,
 
     async getConnection() {
@@ -205,6 +210,7 @@ function createHarness({
         },
 
         async commit() {
+          committed = true;
           release();
         },
 
@@ -225,10 +231,17 @@ async function requestRegistration({
   attendeeId = attendeeOne,
   body = { ...validBody },
   roles = ["ATTENDEE"],
-  harness = createHarness()
+  harness = createHarness(),
+  notificationFailure = null
 } = {}) {
   const originalGetConnection = pool.getConnection;
+  const originalNotify = notificationService.notifyRegistration;
   pool.getConnection = harness.getConnection.bind(harness);
+  notificationService.notifyRegistration = async payload => {
+    assert.equal(harness.committed, true, "notification runs after commit");
+    if (notificationFailure) throw notificationFailure;
+    harness.notifications.push(payload);
+  };
 
   const response = {
     statusCode: null,
@@ -261,6 +274,7 @@ async function requestRegistration({
     );
   } finally {
     pool.getConnection = originalGetConnection;
+    notificationService.notifyRegistration = originalNotify;
   }
 
   return { response, forwardedError, harness };
@@ -293,6 +307,9 @@ test("attendee registration persists and returns a confirmed registration", asyn
   assert.equal(registration.department, validBody.department);
 
   assert.equal(harness.storedRegistrations.length, 1);
+  assert.equal(harness.notifications.length, 1);
+  assert.equal(harness.notifications[0].recipientId, attendeeOne);
+  assert.equal(harness.notifications[0].registrationId, registration.registration_id);
   assert.ok(harness.executedSql.some(sql => /FOR UPDATE/.test(sql)));
   assert.ok(harness.executedSql.some(sql => /COUNT\s*\(/i.test(sql)));
   assert.ok(harness.executedSql.some(sql => /INSERT\s+INTO\s+registration_payments/i.test(sql)));
@@ -444,7 +461,9 @@ test("concurrent requests at the final place cannot exceed capacity", async () =
   });
 
   const originalGetConnection = pool.getConnection;
+  const originalNotifyRegistration = notificationService.notifyRegistration;
   pool.getConnection = harness.getConnection.bind(harness);
+  notificationService.notifyRegistration = async () => {};
 
   const submit = async attendeeId => {
     const response = {
@@ -486,6 +505,7 @@ test("concurrent requests at the final place cannot exceed capacity", async () =
     ]);
   } finally {
     pool.getConnection = originalGetConnection;
+    notificationService.notifyRegistration = originalNotifyRegistration;
   }
 
   assert.deepEqual(
@@ -504,6 +524,14 @@ test("database errors are forwarded after rolling back", async () => {
   });
 
   assert.equal(forwardedError, failure);
+});
+
+test("notification storage failures do not roll back a successful registration", async () => {
+  const harness = createHarness();
+  const { response } = await requestRegistration({ harness, notificationFailure: new Error("notification db unavailable") });
+  assert.equal(response.statusCode, 201);
+  assert.equal(harness.committed, true);
+  assert.equal(harness.storedRegistrations.length, 1);
 });
 
 test("registration migration defines unique, foreign-keyed InnoDB records", () => {

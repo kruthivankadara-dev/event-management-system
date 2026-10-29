@@ -3,6 +3,7 @@ const pool = require("../config/db");
 const { validateRegistrationRequest } = require("../validators/registrationValidators");
 const { issueTicket } = require("../services/ticketService");
 const QRCode = require("qrcode");
+const notificationService = require("../services/notificationService");
 
 const EVENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const USER_ID_PATTERN = EVENT_ID_PATTERN;
@@ -77,7 +78,7 @@ const attendeeEmail = attendees[0].email;
 
     // Serialize all reservations for this event by locking its event row.
     const [events] = await connection.execute(
-      `SELECT event_id, title, status, capacity,
+      `SELECT event_id, title, venue, start_datetime, end_datetime, status, capacity,
         (registration_deadline IS NULL OR registration_deadline >= CURRENT_TIMESTAMP) AS registration_open,
         (start_datetime > CURRENT_TIMESTAMP) AS event_upcoming
        FROM events
@@ -219,6 +220,17 @@ await connection.execute(
 
     await connection.commit();
     transactionStarted = false;
+
+    // Notification delivery is best effort and happens after the committed registration.
+    try {
+      await notificationService.notifyRegistration({
+        recipientId: attendeeId,
+        registrationId,
+        event
+      });
+    } catch (notificationError) {
+      console.error("Registration notification could not be stored.", notificationError.code || "DATABASE_ERROR");
+    }
 
     return res.status(201).json({
       success: true,

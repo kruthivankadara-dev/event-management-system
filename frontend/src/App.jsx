@@ -43,6 +43,12 @@ const [checkInEventId, setCheckInEventId] = useState("");
 const [checkInLoading, setCheckInLoading] = useState(false);
 const [checkInMessage, setCheckInMessage] = useState("");
 const [checkInError, setCheckInError] = useState("");
+const [notifications, setNotifications] = useState([]);
+const [notificationsLoading, setNotificationsLoading] = useState(false);
+const [notificationsError, setNotificationsError] = useState("");
+const [notificationMessage, setNotificationMessage] = useState("");
+const [reminderEventId, setReminderEventId] = useState(null);
+const [reminderFeedback, setReminderFeedback] = useState("");
 
 const [studentRegistrationForm, setStudentRegistrationForm] = useState({
   phoneNumber: "",
@@ -266,6 +272,64 @@ useEffect(() => {
   };
 }, [user, eventFilters]);
 
+async function fetchNotifications() {
+  setNotificationsLoading(true);
+  setNotificationsError("");
+  try {
+    const response = await fetch(`${API_URL}/notifications`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("ems_token")}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Could not load notifications.");
+    setNotifications(result.data?.notifications || []);
+  } catch (err) {
+    setNotificationsError(err instanceof TypeError ? "Cannot connect to the notification service." : err.message);
+  } finally {
+    setNotificationsLoading(false);
+  }
+}
+
+async function markNotificationRead(notificationId) {
+  setNotificationMessage("");
+  setNotificationsError("");
+  try {
+    const response = await fetch(`${API_URL}/notifications/${encodeURIComponent(notificationId)}/read`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${localStorage.getItem("ems_token")}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Could not update notification.");
+    setNotifications(items => items.map(item => item.notification_id === notificationId ? { ...item, is_read: 1 } : item));
+    setNotificationMessage("Notification marked as read.");
+  } catch (err) {
+    setNotificationsError(err instanceof TypeError ? "Cannot connect to the notification service." : err.message);
+  }
+}
+
+async function sendEventReminder(eventId) {
+  setReminderEventId(eventId);
+  setReminderFeedback("");
+  try {
+    const response = await fetch(`${API_URL}/notifications/events/${encodeURIComponent(eventId)}/reminder`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${localStorage.getItem("ems_token")}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Could not send reminder.");
+    setReminderFeedback(result.message || "Reminder notifications created.");
+    fetchNotifications();
+  } catch (err) {
+    setReminderFeedback(err instanceof TypeError ? "Cannot connect to the notification service." : err.message);
+  } finally {
+    setReminderEventId(null);
+  }
+}
+
+useEffect(() => {
+  if (user) fetchNotifications();
+  else setNotifications([]);
+}, [user]);
+
 useEffect(() => {
   if (!selectedEventId) {
     setEventDetail(null);
@@ -402,6 +466,7 @@ async function registerForEvent(eventId) {
     setRegistrationMessage(
       result.message || "You are registered for this event."
     );
+    fetchNotifications();
   } catch (err) {
     setRegistrationError(
       err instanceof TypeError
@@ -510,6 +575,35 @@ useEffect(() => {
     return (
       <section className="dashboard-section">
         <h2>Your dashboard</h2>
+
+        <div className="dashboard-panel notification-panel" aria-labelledby="notification-heading">
+          <div className="notification-heading-row">
+            <h3 id="notification-heading">Notifications</h3>
+            <button type="button" onClick={fetchNotifications} disabled={notificationsLoading}>
+              {notificationsLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          {notificationsLoading && <p role="status">Loading notifications...</p>}
+          {notificationsError && <p className="alert error" role="alert">{notificationsError}</p>}
+          {notificationMessage && <p className="alert success" role="status">{notificationMessage}</p>}
+          {!notificationsLoading && !notificationsError && notifications.length === 0 && (
+            <p role="status">You have no notifications yet.</p>
+          )}
+          <ul className="notification-list">
+            {notifications.map(item => (
+              <li key={item.notification_id} className={Number(item.is_read) ? "notification-item" : "notification-item notification-unread"}>
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{item.message}</p>
+                  <small>{new Date(item.created_at).toLocaleString()}</small>
+                </div>
+                {!Number(item.is_read) && (
+                  <button type="button" onClick={() => markNotificationRead(item.notification_id)}>Mark as read</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
 
 
 {(roles.includes("ATTENDEE") ||
@@ -621,6 +715,13 @@ useEffect(() => {
           <strong>Starts:</strong>{" "}
           {new Date(event.start_datetime).toLocaleString()}
         </p>
+
+        {(roles.includes("ADMIN") || (roles.includes("ORGANIZER") && event.created_by === user.id)) && (
+          <button type="button" onClick={() => sendEventReminder(event.event_id)} disabled={reminderEventId === event.event_id}>
+            {reminderEventId === event.event_id ? "Sending reminder..." : "Send attendee reminder"}
+          </button>
+        )}
+        {reminderFeedback && <p role="status">{reminderFeedback}</p>}
 
         {selectedEventId === event.event_id && (
           <div className="event-detail">
