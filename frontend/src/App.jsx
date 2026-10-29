@@ -60,6 +60,11 @@ const [feedbackLoading, setFeedbackLoading] = useState(false);
 const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
 const [feedbackError, setFeedbackError] = useState("");
 const [feedbackMessage, setFeedbackMessage] = useState("");
+const [reportFilters, setReportFilters] = useState({ from: "", to: "", status: "" });
+const [reportData, setReportData] = useState(null);
+const [reportsLoading, setReportsLoading] = useState(false);
+const [reportsError, setReportsError] = useState("");
+const [reportsLoaded, setReportsLoaded] = useState(false);
 
 const [studentRegistrationForm, setStudentRegistrationForm] = useState({
   phoneNumber: "",
@@ -377,9 +382,43 @@ async function loadOwnFeedback(eventId, signal) {
   }
 }
 
+async function fetchReports(filters = reportFilters) {
+  setReportsLoading(true);
+  setReportsError("");
+  setReportData(null);
+  setReportsLoaded(false);
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) query.set(key, value);
+  });
+  try {
+    const queryString = query.toString();
+    const response = await fetch(`${API_URL}/reports/events${queryString ? `?${queryString}` : ""}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("ems_token")}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Could not load event reports.");
+    setReportData(result.data);
+    setReportsLoaded(true);
+  } catch (err) {
+    setReportsError(err instanceof TypeError ? "Cannot connect to the reporting service." : err.message);
+  } finally {
+    setReportsLoading(false);
+  }
+}
+
 useEffect(() => {
   if (user) fetchNotifications();
   else setNotifications([]);
+}, [user]);
+
+useEffect(() => {
+  if (user?.roles?.some(role => ["ADMIN", "ORGANIZER"].includes(role))) {
+    fetchReports({ from: "", to: "", status: "" });
+  } else {
+    setReportData(null);
+    setReportsLoaded(false);
+  }
 }, [user]);
 
 useEffect(() => {
@@ -665,6 +704,82 @@ useEffect(() => {
     return (
       <section className="dashboard-section">
         <h2>Your dashboard</h2>
+
+        {roles.some(role => ["ADMIN", "ORGANIZER"].includes(role)) && (
+          <section className="dashboard-panel report-panel" aria-labelledby="report-heading">
+            <h3 id="report-heading">Event reports</h3>
+            <p>Registration, check-in, and payment-status totals for events you can access.</p>
+            <form className="report-filters" onSubmit={event => { event.preventDefault(); fetchReports(); }}>
+              <div>
+                <label htmlFor="report-from">From</label>
+                <input id="report-from" type="date" value={reportFilters.from}
+                  onChange={event => setReportFilters({ ...reportFilters, from: event.target.value })} />
+              </div>
+              <div>
+                <label htmlFor="report-to">To</label>
+                <input id="report-to" type="date" value={reportFilters.to}
+                  onChange={event => setReportFilters({ ...reportFilters, to: event.target.value })} />
+              </div>
+              <div>
+                <label htmlFor="report-status">Event status</label>
+                <select id="report-status" value={reportFilters.status}
+                  onChange={event => setReportFilters({ ...reportFilters, status: event.target.value })}>
+                  <option value="">All statuses</option>
+                  <option value="SCHEDULED">Scheduled</option>
+                  <option value="CANCELLED">Cancelled</option>
+                </select>
+              </div>
+              <button type="submit" disabled={reportsLoading}>
+                {reportsLoading ? "Loading reports..." : "Apply filters"}
+              </button>
+              <button type="button" disabled={reportsLoading} onClick={() => {
+                const cleared = { from: "", to: "", status: "" };
+                setReportFilters(cleared);
+                fetchReports(cleared);
+              }}>Clear filters</button>
+            </form>
+            {reportsLoading && <p role="status">Loading event reports...</p>}
+            {reportsError && <p className="alert error" role="alert">{reportsError}</p>}
+            {!reportsLoading && reportsLoaded && reportData && (
+              <>
+                <div className="report-summary-grid" aria-label="Report totals">
+                  <div><span>Events</span><strong>{reportData.summary.event_count}</strong></div>
+                  <div><span>Registrations</span><strong>{reportData.summary.total_registrations}</strong></div>
+                  <div><span>Confirmed</span><strong>{reportData.summary.confirmed_registrations}</strong></div>
+                  <div><span>Checked in</span><strong>{reportData.summary.checked_in_attendees}</strong></div>
+                  <div><span>Payments pending</span><strong>{reportData.summary.pending_payments}</strong></div>
+                  <div><span>Payments successful</span><strong>{reportData.summary.successful_payments}</strong></div>
+                  <div><span>Payments failed</span><strong>{reportData.summary.failed_payments}</strong></div>
+                </div>
+                {reportData.events.length === 0 ? (
+                  <p role="status">No events match these report filters.</p>
+                ) : (
+                  <div className="report-table-wrap">
+                    <table className="report-table">
+                      <thead><tr>
+                        <th scope="col">Event</th><th scope="col">Status</th>
+                        <th scope="col">Registrations</th><th scope="col">Confirmed</th>
+                        <th scope="col">Cancelled</th><th scope="col">Checked in</th>
+                        <th scope="col">Payment status (pending / successful / failed)</th>
+                      </tr></thead>
+                      <tbody>{reportData.events.map(report => (
+                        <tr key={report.event_id}>
+                          <td><strong>{report.title}</strong><small>{new Date(report.start_datetime).toLocaleString()} · {report.venue}</small></td>
+                          <td>{report.status}</td>
+                          <td>{report.total_registrations}</td>
+                          <td>{report.confirmed_registrations}</td>
+                          <td>{report.cancelled_registrations}</td>
+                          <td>{report.checked_in_attendees}</td>
+                          <td>{report.pending_payments} / {report.successful_payments} / {report.failed_payments}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
         <div className="dashboard-panel notification-panel" aria-labelledby="notification-heading">
           <div className="notification-heading-row">
