@@ -15,6 +15,7 @@ const {
   authorizeRoles
 } = require("../middleware/authMiddleware");
 const { registerForEvent } = require("../controllers/registrationController");
+const { submitFeedback, getEventFeedback } = require("../controllers/feedbackController");
 
 const router = express.Router();
 
@@ -27,6 +28,22 @@ router.get(
   authenticateToken,
   authorizeRoles("ADMIN", "ORGANIZER"),
   getEventAttendees
+);
+
+// Attendees may read only their own feedback; event owners and admins may review all feedback.
+router.get(
+  "/:id/feedback",
+  authenticateToken,
+  authorizeRoles("ATTENDEE", "ORGANIZER", "ADMIN"),
+  getEventFeedback
+);
+
+// Only authenticated attendees may submit feedback.
+router.post(
+  "/:id/feedback",
+  authenticateToken,
+  authorizeRoles("ATTENDEE"),
+  submitFeedback
 );
 
 // View one scheduled event: authenticated users only.
