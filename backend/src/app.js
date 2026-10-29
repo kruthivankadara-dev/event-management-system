@@ -6,6 +6,7 @@ const imageRoutes = require("./routes/imageRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const ticketRoutes = require("./routes/ticketRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 const path = require("path");
 
 const app = express();
@@ -25,6 +26,7 @@ app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
+app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/images", imageRoutes);
 
 app.use((req, res) => {
