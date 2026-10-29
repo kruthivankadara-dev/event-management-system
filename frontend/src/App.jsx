@@ -53,6 +53,13 @@ const [attendeeListEventId, setAttendeeListEventId] = useState(null);
 const [attendeeList, setAttendeeList] = useState([]);
 const [attendeeListLoading, setAttendeeListLoading] = useState(false);
 const [attendeeListError, setAttendeeListError] = useState("");
+const [eventFeedback, setEventFeedback] = useState(null);
+const [feedbackRating, setFeedbackRating] = useState("5");
+const [feedbackComment, setFeedbackComment] = useState("");
+const [feedbackLoading, setFeedbackLoading] = useState(false);
+const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+const [feedbackError, setFeedbackError] = useState("");
+const [feedbackMessage, setFeedbackMessage] = useState("");
 
 const [studentRegistrationForm, setStudentRegistrationForm] = useState({
   phoneNumber: "",
@@ -348,6 +355,28 @@ async function loadAttendeeList(eventId) {
   }
 }
 
+async function loadOwnFeedback(eventId, signal) {
+  setFeedbackLoading(true);
+  setFeedbackError("");
+  try {
+    const response = await fetch(`${API_URL}/events/${encodeURIComponent(eventId)}/feedback`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("ems_token")}` },
+      signal
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Could not load your feedback.");
+    if (!signal?.aborted) {
+      setEventFeedback({ eventId, feedback: result.data?.feedback?.[0] || null });
+    }
+  } catch (err) {
+    if (!signal?.aborted) {
+      setFeedbackError(err instanceof TypeError ? "Cannot connect to the feedback service." : err.message);
+    }
+  } finally {
+    if (!signal?.aborted) setFeedbackLoading(false);
+  }
+}
+
 useEffect(() => {
   if (user) fetchNotifications();
   else setNotifications([]);
@@ -368,6 +397,12 @@ useEffect(() => {
   setRegistrationError("");
   setTicketLoading(false);
   setTicketError("");
+  setEventFeedback(null);
+  setFeedbackRating("5");
+  setFeedbackComment("");
+  setFeedbackLoading(false);
+  setFeedbackError("");
+  setFeedbackMessage("");
   setEventDetailLoading(true);
 
   async function fetchEventDetail() {
@@ -409,6 +444,12 @@ useEffect(() => {
         } finally {
           if (!controller.signal.aborted) setTicketLoading(false);
         }
+      }
+      if (
+        user?.roles?.includes("ATTENDEE") &&
+        registration?.attendeeStatus === "CONFIRMED"
+      ) {
+        await loadOwnFeedback(selectedEventId, controller.signal);
       }
       setEventDetail(detail);
     } catch (err) {
@@ -498,6 +539,32 @@ async function registerForEvent(eventId) {
     );
   } finally {
     setRegistrationLoadingId(null);
+  }
+}
+
+async function submitEventFeedback(event) {
+  event.preventDefault();
+  if (!selectedEventId || feedbackSubmitting) return;
+  setFeedbackSubmitting(true);
+  setFeedbackError("");
+  setFeedbackMessage("");
+  try {
+    const response = await fetch(`${API_URL}/events/${encodeURIComponent(selectedEventId)}/feedback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+      },
+      body: JSON.stringify({ rating: Number(feedbackRating), comment: feedbackComment })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Could not submit feedback.");
+    setEventFeedback({ eventId: selectedEventId, feedback: result.data?.feedback || null });
+    setFeedbackMessage(result.message || "Your feedback was submitted.");
+  } catch (err) {
+    setFeedbackError(err instanceof TypeError ? "Cannot connect to the feedback service." : err.message);
+  } finally {
+    setFeedbackSubmitting(false);
   }
 }
 
@@ -870,6 +937,54 @@ useEffect(() => {
                       <p>Show this QR code to event staff at check-in.</p>
                     </>
                   )}
+                </section>
+              )}
+
+              {roles.includes("ATTENDEE") && eventDetail.registration?.attendeeStatus === "CONFIRMED" && (
+                <section className="feedback-panel" aria-labelledby={`feedback-heading-${details.event_id}`}>
+                  <h3 id={`feedback-heading-${details.event_id}`}>Event feedback</h3>
+                  {feedbackLoading && <p role="status">Loading your feedback...</p>}
+                  {feedbackError && <p className="alert error" role="alert">{feedbackError}</p>}
+                  {feedbackError && <button type="button" onClick={() => loadOwnFeedback(details.event_id)}>Retry feedback</button>}
+                  {feedbackMessage && <p className="alert success" role="status">{feedbackMessage}</p>}
+                  {!feedbackLoading && !feedbackError && new Date(details.end_datetime).getTime() > Date.now() && (
+                    <p>Feedback is available after this event has ended.</p>
+                  )}
+                  {!feedbackLoading && !feedbackError && eventFeedback?.eventId === details.event_id && eventFeedback.feedback && (
+                    <div className="feedback-submitted" role="status">
+                      <p><strong>Your rating:</strong> {eventFeedback.feedback.rating} / 5</p>
+                      {eventFeedback.feedback.comment && <p>{eventFeedback.feedback.comment}</p>}
+                      <p>You have already submitted feedback for this event.</p>
+                    </div>
+                  )}
+                  {!feedbackLoading && !feedbackError && new Date(details.end_datetime).getTime() <= Date.now() &&
+                    eventFeedback?.eventId === details.event_id && !eventFeedback.feedback && (
+                      <form className="event-feedback-form" onSubmit={submitEventFeedback}>
+                        <label htmlFor={`feedback-rating-${details.event_id}`}>Rating</label>
+                        <select
+                          id={`feedback-rating-${details.event_id}`}
+                          value={feedbackRating}
+                          onChange={e => setFeedbackRating(e.target.value)}
+                          required
+                        >
+                          {[5, 4, 3, 2, 1].map(rating => (
+                            <option key={rating} value={rating}>{rating} / 5</option>
+                          ))}
+                        </select>
+                        <label htmlFor={`feedback-comment-${details.event_id}`}>Comments (optional)</label>
+                        <textarea
+                          id={`feedback-comment-${details.event_id}`}
+                          value={feedbackComment}
+                          onChange={e => setFeedbackComment(e.target.value)}
+                          maxLength={2000}
+                          rows={4}
+                          placeholder="Share what went well or could be improved."
+                        />
+                        <button type="submit" disabled={feedbackSubmitting}>
+                          {feedbackSubmitting ? "Submitting feedback..." : "Submit feedback"}
+                        </button>
+                      </form>
+                    )}
                 </section>
               )}
 
