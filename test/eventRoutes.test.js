@@ -153,6 +153,55 @@ test("attendee lists require authentication and organizer/admin authorization", 
   assert.equal(attendee.status, 403);
 });
 
+test("feedback endpoints require authentication", async () => {
+  const eventId = "9d3dba07-c272-4f71-aedd-3fc7f4c3c589";
+  const read = await fetch(`${baseUrl}/api/v1/events/${eventId}/feedback`);
+  const submit = await fetch(`${baseUrl}/api/v1/events/${eventId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rating: 5 })
+  });
+  assert.equal(read.status, 401);
+  assert.equal(submit.status, 401);
+});
+
+test("only attendees may submit feedback and event staff cannot retrieve it", async () => {
+  const eventId = "9d3dba07-c272-4f71-aedd-3fc7f4c3c589";
+  const organizerToken = jwt.sign(
+    { sub: "organizer-id", roles: ["ORGANIZER"] },
+    process.env.JWT_SECRET
+  );
+  const organizerSubmit = await fetch(`${baseUrl}/api/v1/events/${eventId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizerToken}` },
+    body: JSON.stringify({ rating: 5 })
+  });
+  assert.equal(organizerSubmit.status, 403);
+
+  const staffToken = jwt.sign(
+    { sub: "staff-id", roles: ["EVENT_STAFF"] },
+    process.env.JWT_SECRET
+  );
+  const staffRead = await fetch(`${baseUrl}/api/v1/events/${eventId}/feedback`, {
+    headers: { Authorization: `Bearer ${staffToken}` }
+  });
+  assert.equal(staffRead.status, 403);
+});
+
+test("reporting endpoints require authentication and reject attendees", async () => {
+  const anonymous = await fetch(`${baseUrl}/api/v1/reports/events`);
+  assert.equal(anonymous.status, 401);
+
+  const token = jwt.sign(
+    { sub: "attendee-id", roles: ["ATTENDEE"] },
+    process.env.JWT_SECRET
+  );
+  const attendee = await fetch(`${baseUrl}/api/v1/reports/events`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  assert.equal(attendee.status, 403);
+});
+
 test("event registration requires authentication", async () => {
   const response = await fetch(`${baseUrl}/api/v1/events/9d3dba07-c272-4f71-aedd-3fc7f4c3c589/register`, {
     method: "POST",
