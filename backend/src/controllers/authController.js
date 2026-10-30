@@ -109,10 +109,12 @@ async function login(req, res, next) {
     const password = parsed.data.password;
 
     const [users] = await pool.execute(
-      `SELECT user_id, full_name, email, password_hash
-       FROM users WHERE email = ? LIMIT 1`,
-      [email]
-    );
+  `SELECT user_id, full_name, email, password_hash, account_status
+   FROM users
+   WHERE email = ?
+   LIMIT 1`,
+  [email]
+);
 
     if (users.length === 0) {
       return res.status(401).json({
@@ -122,10 +124,18 @@ async function login(req, res, next) {
     }
 
     const user = users[0];
-    const passwordMatches = await bcrypt.compare(
-      password,
-      user.password_hash
-    );
+
+if (user.account_status !== "ACTIVE") {
+  return res.status(403).json({
+    success: false,
+    message: "Your account is inactive. Please contact an administrator."
+  });
+}
+
+const passwordMatches = await bcrypt.compare(
+  password,
+  user.password_hash
+);
 
     if (!passwordMatches) {
       return res.status(401).json({
@@ -217,13 +227,10 @@ async function assignRole(req, res, next) {
     }
 
     // Replace the user's existing role with the selected role.
+// Add the selected role without removing existing roles.
 await connection.execute(
-  "DELETE FROM user_roles WHERE user_id = ?",
-  [userId]
-);
-
-await connection.execute(
-  "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+  `INSERT IGNORE INTO user_roles (user_id, role_id)
+   VALUES (?, ?)`,
   [userId, roles[0].role_id]
 );
 
@@ -253,27 +260,168 @@ async function getUsers(req, res, next) {
          u.user_id,
          u.full_name,
          u.email,
+         u.account_status,
          GROUP_CONCAT(r.role_name ORDER BY r.role_name SEPARATOR ',') AS roles
        FROM users u
        LEFT JOIN user_roles ur ON u.user_id = ur.user_id
        LEFT JOIN roles r ON ur.role_id = r.role_id
-       GROUP BY u.user_id, u.full_name, u.email
+       GROUP BY u.user_id, u.full_name, u.email,u.account_status
        ORDER BY u.full_name`
     );
 
     return res.status(200).json({
       success: true,
       data: users.map(user => ({
-        id: user.user_id,
-        name: user.full_name,
-        email: user.email,
-        roles: user.roles ? user.roles.split(",") : []
-      }))
+  id: user.user_id,
+  name: user.full_name,
+  email: user.email,
+  accountStatus: user.account_status,
+  roles: user.roles ? user.roles.split(",") : []
+}))
     });
   } catch (error) {
     next(error);
   }
 }
 
-module.exports = { register, login, assignRole, getUsers };
+
+async function updateUserStatus(req, res, next) {
+  const { userId } = req.params;
+  const { accountStatus } = req.body;
+
+  if (!["ACTIVE", "INACTIVE"].includes(accountStatus)) {
+    return res.status(400).json({
+      success: false,
+      message: "Account status must be ACTIVE or INACTIVE."
+    });
+  }
+
+  if (userId === req.user.id && accountStatus === "INACTIVE") {
+    return res.status(400).json({
+      success: false,
+      message: "You cannot deactivate your own account."
+    });
+  }
+
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // Lock the target user while checking and updating their status.
+    const [users] = await connection.execute(
+      `SELECT user_id, account_status
+       FROM users
+       WHERE user_id = ?
+       FOR UPDATE`,
+      [userId]
+    );
+
+    if (users.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "User not found."
+      });
+    }
+
+    const oldStatus = users[0].account_status;
+
+    if (oldStatus === accountStatus) {
+      await connection.rollback();
+      return res.status(200).json({
+        success: true,
+        message: `User account is already ${accountStatus}.`
+      });
+    }
+
+    // Prevent deactivation of the last active administrator.
+    if (accountStatus === "INACTIVE") {
+      const [adminRows] = await connection.execute(
+        `SELECT COUNT(DISTINCT u.user_id) AS active_admins
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.user_id
+         JOIN roles r ON r.role_id = ur.role_id
+         WHERE r.role_name = 'ADMIN'
+           AND u.account_status = 'ACTIVE'`
+      );
+
+      const [targetAdmin] = await connection.execute(
+        `SELECT COUNT(*) AS is_admin
+         FROM user_roles ur
+         JOIN roles r ON r.role_id = ur.role_id
+         WHERE ur.user_id = ?
+           AND r.role_name = 'ADMIN'`,
+        [userId]
+      );
+
+      if (
+        targetAdmin[0].is_admin > 0 &&
+        adminRows[0].active_admins <= 1
+      ) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Cannot deactivate the last active administrator."
+        });
+      }
+    }
+
+    await connection.execute(
+      `UPDATE users
+       SET account_status = ?
+       WHERE user_id = ?`,
+      [accountStatus, userId]
+    );
+
+    // Record the administrative action.
+    await connection.execute(
+      `INSERT INTO admin_audit_logs
+       (audit_id, admin_id, action, entity_type, entity_id,
+        old_values, new_values)
+       VALUES (UUID(), ?, ?, 'USER', ?, ?, ?)`,
+      [
+        req.user.id,
+        accountStatus === "ACTIVE"
+          ? "ACTIVATE_USER"
+          : "DEACTIVATE_USER",
+        userId,
+        JSON.stringify({ accountStatus: oldStatus }),
+        JSON.stringify({ accountStatus })
+      ]
+    );
+
+    await connection.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: `User account ${accountStatus.toLowerCase()} successfully.`,
+      data: {
+        userId,
+        accountStatus
+      }
+    });
+
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+
+    next(error);
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+}
+
+
+module.exports = {
+  register,
+  login,
+  assignRole,
+  getUsers,
+  updateUserStatus
+};
 
