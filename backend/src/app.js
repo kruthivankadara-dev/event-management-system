@@ -8,6 +8,7 @@ const ticketRoutes = require("./routes/ticketRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const path = require("path");
+const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
@@ -22,6 +23,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
