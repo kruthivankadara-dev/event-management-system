@@ -1,5 +1,6 @@
 
 const jwt = require("jsonwebtoken");
+const pool = require("../config/db");
 
 const VALID_ROLES = [
   "ATTENDEE",
@@ -8,7 +9,7 @@ const VALID_ROLES = [
   "EVENT_STAFF"
 ];
 
-function authenticateToken(req, res, next) {
+async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -41,16 +42,50 @@ function authenticateToken(req, res, next) {
       });
     }
 
+    // Check the user's current account status in the database.
+    const [users] = await pool.execute(
+      `SELECT account_status
+       FROM users
+       WHERE user_id = ?`,
+      [decoded.sub]
+    );
+
+    if (users.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: "User account not found."
+      });
+    }
+
+    if (users[0].account_status !== "ACTIVE") {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is inactive. Please contact an administrator."
+      });
+    }
+
     req.user = {
       id: decoded.sub,
       roles: decoded.roles
     };
 
     next();
+
   } catch (error) {
-    return res.status(401).json({
+    if (error.name === "JsonWebTokenError" ||
+        error.name === "TokenExpiredError" ||
+        error.name === "NotBeforeError") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired token."
+      });
+    }
+
+    console.error("Authentication middleware error:", error);
+
+    return res.status(500).json({
       success: false,
-      message: "Invalid or expired token."
+      message: "Unable to authenticate user."
     });
   }
 }

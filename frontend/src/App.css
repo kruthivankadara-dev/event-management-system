@@ -689,3 +689,104 @@ button.register-button:disabled {
   margin-top: 0.25rem;
   color: #a8b0c5;
 }
+
+
+/* Event Reports layout only */
+.dashboard-panel.report-panel .report-filters {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr)
+    minmax(150px, 1fr) auto auto;
+  align-items: end;
+  gap: 12px;
+  margin: 20px 0 24px;
+}
+
+.dashboard-panel.report-panel .report-filters > div {
+  min-width: 0;
+}
+
+.dashboard-panel.report-panel .report-filters label {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.dashboard-panel.report-panel .report-filters input,
+.dashboard-panel.report-panel .report-filters select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+}
+
+.dashboard-panel.report-panel .report-filters button {
+  align-self: end;
+  margin: 0;
+  white-space: nowrap;
+  min-height: 44px;
+  padding: 10px 14px;
+}
+
+.dashboard-panel.report-panel .report-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.dashboard-panel.report-panel .report-summary-grid > div {
+  min-width: 0;
+  min-height: 105px;
+  box-sizing: border-box;
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.dashboard-panel.report-panel .report-summary-grid span {
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-panel.report-panel .report-summary-grid strong {
+  font-size: 1.5rem;
+}
+
+@media (max-width: 1000px) {
+  .dashboard-panel.report-panel .report-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-panel.report-panel .report-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-panel.report-panel .report-filters,
+  .dashboard-panel.report-panel .report-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-panel.report-panel .report-filters button {
+    width: 100%;
+  }
+}
+
+/* Add spacing between organizer event actions */
+.event-result > button,
+.event-result > a {
+  margin-right: 12px;
+  margin-bottom: 10px;
+}
+
+
+/* Add spacing between management action buttons */
+.event-card button {
+  margin-right: 12px;
+  margin-bottom: 10px;
+}
+
+.event-card button:last-child {
+  margin-right: 0;
+}
+

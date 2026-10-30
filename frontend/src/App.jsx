@@ -104,6 +104,41 @@ const [eventActionLoading, setEventActionLoading] = useState(false);
   const [roleLoading, setRoleLoading] = useState(false);
   const [roleMessage, setRoleMessage] = useState("");
   const [roleError, setRoleError] = useState("");
+  const [statusLoadingId, setStatusLoadingId] = useState(null);
+const [statusMessage, setStatusMessage] = useState("");
+const [statusError, setStatusError] = useState("");
+
+// Venue management
+const [venues, setVenues] = useState([]);
+const [venueForm, setVenueForm] = useState({
+  venueName: "",
+  address: "",
+  description: ""
+});
+const [venueMessage, setVenueMessage] = useState("");
+const [venueError, setVenueError] = useState("");
+const [venueLoading, setVenueLoading] = useState(false);
+const [editingVenueId, setEditingVenueId] = useState(null);
+
+// Category management
+const [categories, setCategories] = useState([]);
+const [categoryForm, setCategoryForm] = useState({
+  categoryName: "",
+  description: ""
+});
+const [categoryMessage, setCategoryMessage] = useState("");
+const [categoryError, setCategoryError] = useState("");
+const [categoryLoading, setCategoryLoading] = useState(false);
+const [editingCategoryId, setEditingCategoryId] = useState(null);
+
+// System configuration
+const [configurations, setConfigurations] = useState([]);
+const [configKey, setConfigKey] = useState("");
+const [configValue, setConfigValue] = useState("");
+const [configDescription, setConfigDescription] = useState("");
+const [configMessage, setConfigMessage] = useState("");
+const [configError, setConfigError] = useState("");
+const [configLoading, setConfigLoading] = useState(false);
 
   function handleChange(event) {
     setForm({
@@ -209,17 +244,310 @@ const [eventActionLoading, setEventActionLoading] = useState(false);
     }
 
     setRegisteredUsers(
-      users.map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        roles: Array.isArray(u.roles) ? u.roles : []
-      }))
-    );
+  users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    roles: Array.isArray(u.roles) ? u.roles : [],
+    accountStatus: u.accountStatus || "ACTIVE"
+  }))
+);
   } catch (err) {
     setUsersError(err.message || "Could not load registered users.");
   } finally {
     setUsersLoading(false);
+  }
+}
+
+// ================= VENUE MANAGEMENT =================
+
+async function fetchVenues() {
+  try {
+    const response = await fetch(`${API_URL}/admin/venues`, {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+      }
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not load venues.");
+    }
+
+    setVenues(Array.isArray(result.data) ? result.data : []);
+  } catch (err) {
+    setVenueError(err.message);
+  }
+}
+
+async function saveVenue() {
+  if (!venueForm.venueName.trim()) {
+    setVenueError("Please enter a venue name.");
+    return;
+  }
+  setVenueLoading(true);
+  setVenueError("");
+  setVenueMessage("");
+
+  try {
+    const isEditing = Boolean(editingVenueId);
+
+    const response = await fetch(
+      isEditing
+        ? `${API_URL}/admin/venues/${encodeURIComponent(editingVenueId)}`
+        : `${API_URL}/admin/venues`,
+      {
+        method: isEditing ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+        },
+        body: JSON.stringify(venueForm)
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not save venue.");
+    }
+
+    setVenueMessage(result.message || "Venue saved successfully.");
+    setVenueForm({ venueName: "", address: "", description: "" });
+    setEditingVenueId(null);
+    await fetchVenues();
+  } catch (err) {
+    setVenueError(err.message);
+  } finally {
+    setVenueLoading(false);
+  }
+}
+
+function editVenue(venue) {
+  setEditingVenueId(venue.venueId);
+  setVenueForm({
+    venueName: venue.venueName,
+    address: venue.address || "",
+    description: venue.description || ""
+  });
+}
+
+async function toggleVenueStatus(venue) {
+  const nextStatus = !venue.isActive;
+
+  if (!window.confirm(
+    `Are you sure you want to ${nextStatus ? "activate" : "deactivate"} this venue?`
+  )) return;
+
+  try {
+    const response = await fetch(
+      `${API_URL}/admin/venues/${encodeURIComponent(venue.venueId)}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+        },
+        body: JSON.stringify({ isActive: nextStatus })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not update venue.");
+    }
+
+    setVenueMessage(result.message || "Venue status updated.");
+    await fetchVenues();
+  } catch (err) {
+    setVenueError(err.message);
+  }
+}
+
+// ================= CATEGORY MANAGEMENT =================
+
+async function fetchCategories() {
+  try {
+    const response = await fetch(`${API_URL}/admin/categories`, {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+      }
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not load categories.");
+    }
+
+    setCategories(Array.isArray(result.data) ? result.data : []);
+  } catch (err) {
+    setCategoryError(err.message);
+  }
+}
+
+// ================= SYSTEM CONFIGURATION =================
+
+async function fetchConfigurations() {
+  setConfigLoading(true);
+  setConfigError("");
+
+  try {
+    const response = await fetch(`${API_URL}/admin/configurations`, {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+      }
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not load configurations.");
+    }
+
+    setConfigurations(Array.isArray(result.data) ? result.data : []);
+  } catch (err) {
+    setConfigError(err.message);
+  } finally {
+    setConfigLoading(false);
+  }
+}
+
+async function saveConfiguration(event) {
+  event.preventDefault();
+
+  if (!configKey.trim()) {
+    setConfigError("Please enter a configuration key.");
+    return;
+  }
+
+  setConfigLoading(true);
+  setConfigError("");
+  setConfigMessage("");
+
+  try {
+    let parsedValue;
+
+    try {
+      parsedValue = JSON.parse(configValue);
+    } catch {
+      parsedValue = configValue;
+    }
+
+    const response = await fetch(
+      `${API_URL}/admin/configurations/${encodeURIComponent(configKey.trim())}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+        },
+        body: JSON.stringify({
+          configValue: parsedValue,
+          description: configDescription
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not save configuration.");
+    }
+
+    setConfigMessage(result.message || "Configuration saved successfully.");
+    setConfigKey("");
+    setConfigValue("");
+    setConfigDescription("");
+
+    await fetchConfigurations();
+  } catch (err) {
+    setConfigError(err.message);
+  } finally {
+    setConfigLoading(false);
+  }
+}
+
+async function saveCategory(event) {
+  event.preventDefault();
+  setCategoryLoading(true);
+  setCategoryError("");
+  setCategoryMessage("");
+
+  try {
+    const isEditing = Boolean(editingCategoryId);
+
+    const response = await fetch(
+      isEditing
+        ? `${API_URL}/admin/categories/${encodeURIComponent(editingCategoryId)}`
+        : `${API_URL}/admin/categories`,
+      {
+        method: isEditing ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+        },
+        body: JSON.stringify(categoryForm)
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not save category.");
+    }
+
+    setCategoryMessage(result.message || "Category saved successfully.");
+    setCategoryForm({ categoryName: "", description: "" });
+    setEditingCategoryId(null);
+    await fetchCategories();
+  } catch (err) {
+    setCategoryError(err.message);
+  } finally {
+    setCategoryLoading(false);
+  }
+}
+
+function editCategory(category) {
+  setEditingCategoryId(category.categoryId);
+  setCategoryForm({
+    categoryName: category.categoryName,
+    description: category.description || ""
+  });
+}
+
+async function toggleCategoryStatus(category) {
+  const nextStatus = !category.isActive;
+
+  if (!window.confirm(
+    `Are you sure you want to ${nextStatus ? "activate" : "deactivate"} this category?`
+  )) return;
+
+  try {
+    const response = await fetch(
+      `${API_URL}/admin/categories/${encodeURIComponent(category.categoryId)}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+        },
+        body: JSON.stringify({ isActive: nextStatus })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not update category.");
+    }
+
+    setCategoryMessage(result.message || "Category status updated.");
+    await fetchCategories();
+  } catch (err) {
+    setCategoryError(err.message);
   }
 }
 
@@ -287,6 +615,14 @@ useEffect(() => {
     controller.abort();
   };
 }, [user, eventFilters]);
+
+useEffect(() => {
+  if (user?.roles?.includes("ADMIN")) {
+    fetchVenues();
+    fetchCategories();
+    fetchConfigurations();
+  }
+}, [user]);
 
 async function fetchNotifications() {
   setNotificationsLoading(true);
@@ -687,6 +1023,51 @@ useEffect(() => {
       setRoleLoading(false);
     }
   }
+
+  async function updateUserStatus(userId, currentStatus) {
+  const nextStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+
+  const confirmed = window.confirm(
+    `Are you sure you want to ${nextStatus === "INACTIVE" ? "deactivate" : "activate"} this account?`
+  );
+
+  if (!confirmed) return;
+
+  setStatusLoadingId(userId);
+  setStatusMessage("");
+  setStatusError("");
+
+  try {
+    const response = await fetch(
+      `${API_URL}/auth/users/${encodeURIComponent(userId)}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("ems_token")}`
+        },
+        body: JSON.stringify({ accountStatus: nextStatus })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Could not update account status.");
+    }
+
+    setStatusMessage(result.message || `Account ${nextStatus.toLowerCase()} successfully.`);
+    await fetchUsers();
+  } catch (err) {
+    setStatusError(
+      err instanceof TypeError
+        ? "Cannot connect to the server."
+        : err.message
+    );
+  } finally {
+    setStatusLoadingId(null);
+  }
+}
 
   function logout() {
     localStorage.removeItem("ems_token");
@@ -1264,6 +1645,7 @@ useEffect(() => {
             <p className="subtitle">
               Event-management actions must be connected to authorized backend endpoints.
             </p>
+            
           </div>
         )}
 
@@ -1306,8 +1688,360 @@ useEffect(() => {
           <div className="dashboard-panel">
             <h3>Administrator dashboard</h3>
             <p>Manage user roles and access authorized administrative features.</p>
+            <p className="subtitle">
+  Use a registered user's ID. The backend must verify ADMIN permissions.
+</p>
+<div className="event-section">
+  <h3>Manage user accounts</h3>
+  <p className="subtitle">
+    View registered users and activate or deactivate their accounts.
+  </p>
 
-            <form onSubmit={assignRole}>
+  {statusError && (
+    <p className="alert error">{statusError}</p>
+  )}
+
+  {statusMessage && (
+    <p className="alert success">{statusMessage}</p>
+  )}
+
+  {usersLoading && <p>Loading users...</p>}
+
+  {!usersLoading && registeredUsers.length > 0 && (
+    <div className="attendee-table-wrap">
+      <table className="attendee-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Roles</th>
+            <th>Account status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {registeredUsers.map((registeredUser) => (
+            <tr key={registeredUser.id}>
+              <td>{registeredUser.name}</td>
+              <td>{registeredUser.email}</td>
+              <td>{registeredUser.roles.join(", ")}</td>
+              <td>{registeredUser.accountStatus}</td>
+              <td>
+                {registeredUser.id === user.id ? (
+                  "Your account"
+                ) : (
+                  <button
+                    type="button"
+                    disabled={statusLoadingId === registeredUser.id}
+                    onClick={() =>
+                      updateUserStatus(
+                        registeredUser.id,
+                        registeredUser.accountStatus
+                      )
+                    }
+                  >
+                    {statusLoadingId === registeredUser.id
+                      ? "Updating..."
+                      : registeredUser.accountStatus === "ACTIVE"
+                        ? "Deactivate"
+                        : "Activate"}
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
+
+              {/* VENUE MANAGEMENT */}
+<div className="event-section">
+  <h3>Manage venues</h3>
+  <p className="subtitle">
+    Administrators can add, edit, activate and deactivate event venues.
+  </p>
+
+  {venueError && <p className="alert error">{venueError}</p>}
+  {venueMessage && <p className="alert success">{venueMessage}</p>}
+
+  <form
+  onSubmit={(event) => {
+    event.preventDefault();
+    console.log("VENUE FORM SUBMITTED");
+    saveVenue(event);
+  }}
+>
+    <label htmlFor="venueName">Venue name</label>
+    <input
+      id="venueName"
+      value={venueForm.venueName}
+      onChange={(e) =>
+        setVenueForm({ ...venueForm, venueName: e.target.value })
+      }
+      maxLength={255}
+      required
+    />
+
+    <label htmlFor="venueAddress">Address</label>
+    <input
+      id="venueAddress"
+      value={venueForm.address}
+      onChange={(e) =>
+        setVenueForm({ ...venueForm, address: e.target.value })
+      }
+      maxLength={500}
+    />
+
+    <label htmlFor="venueDescription">Description</label>
+    <textarea
+      id="venueDescription"
+      value={venueForm.description}
+      onChange={(e) =>
+        setVenueForm({ ...venueForm, description: e.target.value })
+      }
+      maxLength={1000}
+    />
+
+    <button type="submit" disabled={venueLoading}>
+      {venueLoading
+        ? "Saving..."
+        : editingVenueId
+          ? "Update venue"
+          : "Add venue"}
+    </button>
+
+    {editingVenueId && (
+      <button
+        type="button"
+        onClick={() => {
+          setEditingVenueId(null);
+          setVenueForm({
+            venueName: "",
+            address: "",
+            description: ""
+          });
+        }}
+      >
+        Cancel edit
+      </button>
+    )}
+  </form>
+
+  <h4>Existing venues</h4>
+
+  {venues.length === 0 && <p>No venues found.</p>}
+
+  {venues.map((venue) => (
+    <div key={venue.venueId} className="event-card">
+      <h4>{venue.venueName}</h4>
+      <p>{venue.address || "No address provided"}</p>
+      <p>{venue.description || "No description"}</p>
+      <p>Status: {venue.isActive ? "ACTIVE" : "INACTIVE"}</p>
+
+      <button type="button" onClick={() => editVenue(venue)}>
+        Edit
+      </button>
+
+      <button
+        type="button"
+        onClick={() => toggleVenueStatus(venue)}
+      >
+        {venue.isActive ? "Deactivate" : "Activate"}
+      </button>
+    </div>
+  ))}
+</div>
+{/* CATEGORY MANAGEMENT */}
+<div className="event-section">
+  <h3>Manage categories</h3>
+  <p className="subtitle">
+    Administrators can add, edit, activate and deactivate event categories.
+  </p>
+
+  {categoryError && (
+    <p className="alert error">{categoryError}</p>
+  )}
+
+  {categoryMessage && (
+    <p className="alert success">{categoryMessage}</p>
+  )}
+
+  <form onSubmit={saveCategory}>
+    <label htmlFor="categoryName">Category name</label>
+    <input
+      id="categoryName"
+      value={categoryForm.categoryName}
+      onChange={(e) =>
+        setCategoryForm({
+          ...categoryForm,
+          categoryName: e.target.value
+        })
+      }
+      maxLength={100}
+      required
+    />
+
+    <label htmlFor="categoryDescription">Description</label>
+    <textarea
+      id="categoryDescription"
+      value={categoryForm.description}
+      onChange={(e) =>
+        setCategoryForm({
+          ...categoryForm,
+          description: e.target.value
+        })
+      }
+      maxLength={500}
+    />
+
+    <button type="submit" disabled={categoryLoading}>
+      {categoryLoading
+        ? "Saving..."
+        : editingCategoryId
+          ? "Update category"
+          : "Add category"}
+    </button>
+
+    {editingCategoryId && (
+      <button
+        type="button"
+        onClick={() => {
+          setEditingCategoryId(null);
+          setCategoryForm({
+            categoryName: "",
+            description: ""
+          });
+        }}
+      >
+        Cancel edit
+      </button>
+    )}
+  </form>
+
+  <h4>Existing categories</h4>
+
+  {categories.length === 0 && <p>No categories found.</p>}
+
+  {categories.map((category) => (
+    <div key={category.categoryId} className="event-card">
+      <h4>{category.categoryName}</h4>
+      <p>{category.description || "No description"}</p>
+      <p>Status: {category.isActive ? "ACTIVE" : "INACTIVE"}</p>
+
+      <button
+        type="button"
+        onClick={() => editCategory(category)}
+      >
+        Edit
+      </button>
+
+      <button
+        type="button"
+        onClick={() => toggleCategoryStatus(category)}
+      >
+        {category.isActive ? "Deactivate" : "Activate"}
+      </button>
+    </div>
+  ))}
+</div>
+
+{/* SYSTEM CONFIGURATION */}
+<div className="event-section">
+  <h3>System Configuration</h3>
+  <p className="subtitle">
+    Administrators can create and update system configuration settings.
+  </p>
+
+  {configError && (
+    <p className="alert error" role="alert">{configError}</p>
+  )}
+
+  {configMessage && (
+    <p className="alert success" role="status">{configMessage}</p>
+  )}
+
+  <form onSubmit={saveConfiguration}>
+    <label htmlFor="configKey">Configuration key</label>
+    <input
+      id="configKey"
+      value={configKey}
+      onChange={e => setConfigKey(e.target.value)}
+      placeholder="Example: event_registration_enabled"
+      maxLength={100}
+      required
+    />
+
+    <label htmlFor="configValue">Configuration value</label>
+    <textarea
+      id="configValue"
+      value={configValue}
+      onChange={e => setConfigValue(e.target.value)}
+      placeholder='Example: true or {"enabled":true}'
+      rows={3}
+      required
+    />
+
+    <label htmlFor="configDescription">Description</label>
+    <textarea
+      id="configDescription"
+      value={configDescription}
+      onChange={e => setConfigDescription(e.target.value)}
+      placeholder="Describe this configuration"
+      maxLength={500}
+    />
+
+    <button type="submit" disabled={configLoading}>
+      {configLoading ? "Saving..." : "Save Configuration"}
+    </button>
+  </form>
+
+  <h4>Existing Configurations</h4>
+
+  {configLoading && <p>Loading configurations...</p>}
+
+  {!configLoading && configurations.length === 0 && (
+    <p>No configurations found.</p>
+  )}
+
+  {configurations.map(config => (
+    <div key={config.configKey} className="event-card">
+      <h4>{config.configKey}</h4>
+
+      <p>
+        <strong>Value:</strong>{" "}
+        {typeof config.configValue === "object"
+          ? JSON.stringify(config.configValue)
+          : String(config.configValue)}
+      </p>
+
+      <p>
+        <strong>Description:</strong>{" "}
+        {config.description || "No description"}
+      </p>
+
+      <button
+        type="button"
+        onClick={() => {
+          setConfigKey(config.configKey);
+          setConfigValue(
+            typeof config.configValue === "string"
+              ? config.configValue
+              : JSON.stringify(config.configValue)
+          );
+          setConfigDescription(config.description || "");
+          setConfigError("");
+          setConfigMessage("");
+        }}
+      >
+        Edit Configuration
+      </button>
+    </div>
+  ))}
+</div>
+
+<form onSubmit={assignRole}>
               <label htmlFor="targetUserId">Select registered user</label>
 
 {usersError && (
