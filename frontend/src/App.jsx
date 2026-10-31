@@ -6,6 +6,17 @@ const API_URL =
 
 const ROLES = ["ATTENDEE", "ORGANIZER", "ADMIN", "EVENT_STAFF"];
 
+function getSafeExternalUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const [mode, setMode] = useState("register");
   const [form, setForm] = useState({
@@ -1381,6 +1392,7 @@ useEffect(() => {
             {eventDetail?.event?.event_id === event.event_id && (() => {
               const details = eventDetail.event;
               const isScheduled = details.status === "SCHEDULED";
+              const externalRegistrationUrl = getSafeExternalUrl(eventDetail.registration?.url);
               return <>
               <p><strong>Event status:</strong> {details.status}</p>
               {details.description && <p>{details.description}</p>}
@@ -1394,7 +1406,9 @@ useEffect(() => {
                   ? `Full (${eventDetail.availability.registeredCount}/${eventDetail.availability.capacity} registered).`
                   : "Registration is closed for this event."}</p>
               <p><strong>Registration:</strong> {eventDetail.registration?.status === "EXTERNAL"
-                ? "An external registration form is also available."
+                ? externalRegistrationUrl
+                  ? <a href={externalRegistrationUrl} target="_blank" rel="noopener noreferrer">Open external registration form</a>
+                  : "An external registration form is configured."
                 : "Registration is handled by EMS."}</p>
               {roles.includes("ATTENDEE") && (
                 <p><strong>Your registration:</strong> {eventDetail.registration?.attendeeStatus === "CONFIRMED"

@@ -582,3 +582,42 @@ test("student registration migration adds the student details columns", () => {
   assert.match(migration, /college\s+VARCHAR\s*\(\s*150\s*\)/i);
   assert.match(migration, /department\s+VARCHAR\s*\(\s*100\s*\)/i);
 });
+
+test("student registration migration safely skips columns when rerun", () => {
+  const migration = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "database",
+      "migrations",
+      "005_add_student_registration_details.sql"
+    ),
+    "utf8"
+  );
+  const columns = [
+    "attendee_name",
+    "attendee_email",
+    "phone_number",
+    "college",
+    "department"
+  ];
+
+  for (const column of columns) {
+    assert.match(
+      migration,
+      new RegExp(`COLUMN_NAME\\s*=\\s*'${column}'`, "i")
+    );
+    assert.match(
+      migration,
+      new RegExp(
+        `SET @${column}_migration = IF\\(\\s*@${column}_exists = 0,[\\s\\S]*?ALTER TABLE event_registrations ADD COLUMN ${column}`,
+        "i"
+      )
+    );
+  }
+
+  assert.doesNotMatch(
+    migration,
+    /\b(?:UPDATE\s+event_registrations|DELETE\s+FROM\s+event_registrations|TRUNCATE|DROP\s+TABLE)\b/i
+  );
+});

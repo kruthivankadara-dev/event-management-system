@@ -3,6 +3,7 @@ const pool = require("../config/db");
 const { registerSchema } = require("../validators/authValidators");
 const { loginSchema } = require("../validators/authValidators");
 const jwt = require("jsonwebtoken");
+const { writeAudit } = require("../services/auditLogService");
 
 async function register(req, res, next) {
   const parsed = registerSchema.safeParse(req.body);
@@ -228,11 +229,23 @@ async function assignRole(req, res, next) {
 
     // Replace the user's existing role with the selected role.
 // Add the selected role without removing existing roles.
-await connection.execute(
+const [assignment] = await connection.execute(
   `INSERT IGNORE INTO user_roles (user_id, role_id)
    VALUES (?, ?)`,
   [userId, roles[0].role_id]
 );
+
+if (assignment.affectedRows > 0) {
+  await writeAudit(
+    connection,
+    req.user.id,
+    "ASSIGN_ROLE",
+    "USER",
+    userId,
+    null,
+    { roleName }
+  );
+}
 
     await connection.commit();
 
@@ -376,20 +389,14 @@ async function updateUserStatus(req, res, next) {
     );
 
     // Record the administrative action.
-    await connection.execute(
-      `INSERT INTO admin_audit_logs
-       (audit_id, admin_id, action, entity_type, entity_id,
-        old_values, new_values)
-       VALUES (UUID(), ?, ?, 'USER', ?, ?, ?)`,
-      [
-        req.user.id,
-        accountStatus === "ACTIVE"
-          ? "ACTIVATE_USER"
-          : "DEACTIVATE_USER",
-        userId,
-        JSON.stringify({ accountStatus: oldStatus }),
-        JSON.stringify({ accountStatus })
-      ]
+    await writeAudit(
+      connection,
+      req.user.id,
+      accountStatus === "ACTIVE" ? "ACTIVATE_USER" : "DEACTIVATE_USER",
+      "USER",
+      userId,
+      { accountStatus: oldStatus },
+      { accountStatus }
     );
 
     await connection.commit();
@@ -424,4 +431,3 @@ module.exports = {
   getUsers,
   updateUserStatus
 };
-

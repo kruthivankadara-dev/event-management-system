@@ -263,7 +263,7 @@ test("ticket migration enforces one ticket per registration and cascades with re
 
 test("check-in migration adds a revocation state and staff audit reference idempotently", () => {
   const migration = fs.readFileSync(path.join(__dirname, "..", "database", "migrations", "008_add_ticket_checkin_validation.sql"), "utf8");
-  assert.match(migration, /ENUM\('ACTIVE',\s*'REVOKED'\)/i);
+  assert.match(migration, /ENUM\(''ACTIVE'',\s*''REVOKED''\)/i);
   assert.match(migration, /checked_in_by\s+CHAR\s*\(\s*36\s*\)/i);
   assert.match(migration, /FOREIGN KEY\s*\(checked_in_by\)\s*REFERENCES users\s*\(user_id\)/i);
   assert.match(migration, /information_schema\.COLUMNS/i);

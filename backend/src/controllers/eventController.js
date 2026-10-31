@@ -5,6 +5,7 @@ const {
   validateEventSearchQuery
 } = require("../validators/eventValidators");
 const { notifyEventAttendees } = require("../services/notificationService");
+const { writeAudit } = require("../services/auditLogService");
 
 function toMysqlDateTime(value) {
   const formatted = value.replace("T", " ").slice(0, 19);
@@ -29,9 +30,13 @@ async function createEvent(req, res, next) {
 
   const event = parsed.data;
   const eventId = randomUUID();
+  let connection;
 
   try {
-    await pool.execute(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    await connection.execute(
       `INSERT INTO events
  (event_id, title, description, category, venue, start_datetime, end_datetime,
   capacity, registration_deadline, image_url, registration_url, created_by)
@@ -54,7 +59,7 @@ async function createEvent(req, res, next) {
 ]
     );
 
-    const [created] = await pool.execute(
+    const [created] = await connection.execute(
   `SELECT event_id, title, description, category, venue, start_datetime,
           end_datetime, capacity, registration_deadline, image_url,
           registration_url, created_by, created_at
@@ -66,6 +71,18 @@ async function createEvent(req, res, next) {
       throw new Error("Created event could not be retrieved.");
     }
 
+    await writeAudit(
+      connection,
+      req.user.id,
+      "CREATE_EVENT",
+      "EVENT",
+      eventId,
+      null,
+      { fields: Object.keys(event) }
+    );
+
+    await connection.commit();
+
     return res.status(201).json({
       success: true,
       message: "Event created successfully.",
@@ -73,6 +90,8 @@ async function createEvent(req, res, next) {
     });
 
   } catch (error) {
+    if (connection) await connection.rollback();
+
     if (error.code === "ER_NO_REFERENCED_ROW_2") {
       return res.status(401).json({
         success: false,
@@ -91,6 +110,8 @@ async function createEvent(req, res, next) {
     }
 
     next(error);
+  } finally {
+    if (connection) connection.release();
   }
 }
 
@@ -322,22 +343,70 @@ async function updateEvent(req, res, next) {
   }
 
   const event = parsed.data;
+  let connection;
 
   try {
-    const [currentRows] = await pool.execute(
-      `SELECT event_id, title, description, category, venue,
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [currentRows] = await connection.execute(
+      `SELECT event_id, title, description, category, venue, capacity, image_url,
               DATE_FORMAT(start_datetime, '%Y-%m-%d %H:%i:%s') AS start_datetime,
               DATE_FORMAT(end_datetime, '%Y-%m-%d %H:%i:%s') AS end_datetime,
               DATE_FORMAT(registration_deadline, '%Y-%m-%d %H:%i:%s') AS registration_deadline,
               registration_url
-       FROM events WHERE event_id = ? AND created_by = ? AND status = 'SCHEDULED' LIMIT 1`,
+       FROM events
+       WHERE event_id = ? AND created_by = ? AND status = 'SCHEDULED'
+       LIMIT 1
+       FOR UPDATE`,
       [req.params.id, req.user.id]
     );
     if (!currentRows.length) {
+      await connection.rollback();
       return res.status(404).json({ success: false, message: "Event not found, not owned by you, or already cancelled." });
     }
     const previous = currentRows[0];
-    const [result] = await pool.execute(
+
+    const updated = {
+      ...event,
+      event_id: req.params.id,
+      start_datetime: toMysqlDateTime(event.startDateTime),
+      end_datetime: toMysqlDateTime(event.endDateTime),
+      registration_deadline: event.registrationDeadline
+        ? toMysqlDateTime(event.registrationDeadline)
+        : null
+    };
+    const comparablePrevious = {
+      title: previous.title,
+      description: previous.description,
+      category: previous.category || "",
+      venue: previous.venue,
+      startDateTime: previous.start_datetime,
+      endDateTime: previous.end_datetime,
+      capacity: Number(previous.capacity),
+      registrationDeadline: previous.registration_deadline || "",
+      imageUrl: previous.image_url || "",
+      registrationUrl: previous.registration_url || ""
+    };
+    const comparableUpdated = {
+      title: event.title,
+      description: event.description,
+      category: event.category || "",
+      venue: event.venue,
+      startDateTime: updated.start_datetime,
+      endDateTime: updated.end_datetime,
+      capacity: event.capacity,
+      registrationDeadline: updated.registration_deadline || "",
+      imageUrl: event.imageUrl || "",
+      registrationUrl: event.registrationUrl || ""
+    };
+    const changedFields = Object.keys(comparableUpdated).filter(
+      key => String(comparablePrevious[key]) !== String(comparableUpdated[key])
+    );
+    const scheduleChanged = changedFields.includes("startDateTime") ||
+      changedFields.includes("endDateTime");
+
+    const [result] = await connection.execute(
       `UPDATE events
        SET title = ?, description = ?, category = ?, venue = ?,
            start_datetime = ?, end_datetime = ?, capacity = ?,
@@ -362,25 +431,26 @@ async function updateEvent(req, res, next) {
     );
 
     if (result.affectedRows === 0) {
+      await connection.rollback();
       return res.status(404).json({
         success: false,
         message: "Event not found, not owned by you, or already cancelled."
       });
     }
 
-    const updated = {
-      ...event,
-      event_id: req.params.id,
-      venue: event.venue,
-      start_datetime: toMysqlDateTime(event.startDateTime),
-      end_datetime: toMysqlDateTime(event.endDateTime)
-    };
-    const scheduleChanged = String(previous.start_datetime) !== updated.start_datetime ||
-      String(previous.end_datetime) !== updated.end_datetime;
-    const importantChanged = scheduleChanged ||
-      ["title", "description", "category", "venue"].some(key => String(previous[key] ?? "") !== String(event[key] ?? "")) ||
-      String(previous.registration_deadline ?? "") !== String(event.registrationDeadline ? toMysqlDateTime(event.registrationDeadline) : "") ||
-      String(previous.registration_url ?? "") !== String(event.registrationUrl ?? "");
+    await writeAudit(
+      connection,
+      req.user.id,
+      scheduleChanged ? "POSTPONE_EVENT" : "UPDATE_EVENT",
+      "EVENT",
+      req.params.id,
+      { changedFields },
+      { changedFields }
+    );
+
+    await connection.commit();
+
+    const importantChanged = changedFields.length > 0;
     if (importantChanged) {
       try {
         await notifyEventAttendees({
@@ -400,19 +470,38 @@ async function updateEvent(req, res, next) {
       message: "Event updated successfully."
     });
   } catch (error) {
-    next(error);
+    if (connection) await connection.rollback();
+    return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 }
 
 async function cancelEvent(req, res, next) {
+  let connection;
+
   try {
-    const [eventRows] = await pool.execute(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [eventRows] = await connection.execute(
       `SELECT event_id, title, venue, start_datetime, end_datetime
-       FROM events WHERE event_id = ? AND created_by = ? AND status = 'SCHEDULED' LIMIT 1`,
+       FROM events
+       WHERE event_id = ? AND created_by = ? AND status = 'SCHEDULED'
+       LIMIT 1
+       FOR UPDATE`,
       [req.params.id, req.user.id]
     );
+    if (!eventRows.length) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Event not found, not owned by you, or already cancelled."
+      });
+    }
+
     const event = eventRows[0];
-    const [result] = await pool.execute(
+    const [result] = await connection.execute(
       `UPDATE events
        SET status = 'CANCELLED'
        WHERE event_id = ? AND created_by = ? AND status = 'SCHEDULED'`,
@@ -420,11 +509,24 @@ async function cancelEvent(req, res, next) {
     );
 
     if (result.affectedRows === 0) {
+      await connection.rollback();
       return res.status(404).json({
         success: false,
         message: "Event not found, not owned by you, or already cancelled."
       });
     }
+
+    await writeAudit(
+      connection,
+      req.user.id,
+      "CANCEL_EVENT",
+      "EVENT",
+      req.params.id,
+      { status: "SCHEDULED" },
+      { status: "CANCELLED" }
+    );
+
+    await connection.commit();
 
     if (event) {
       try {
@@ -445,7 +547,10 @@ async function cancelEvent(req, res, next) {
       message: "Event cancelled successfully."
     });
   } catch (error) {
-    next(error);
+    if (connection) await connection.rollback();
+    return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 }
 

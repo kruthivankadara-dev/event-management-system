@@ -113,6 +113,7 @@ Method	Endpoint	Access	Purpose
 GET	/api/v1/events	Authenticated users	Retrieve scheduled events; supports `q`, `category`, `date` (`YYYY-MM-DD`), and `venue` filters
 POST	/api/v1/events/:id/register	ATTENDEE	Register for an available event; returns 409 for duplicates, full, or closed events
 POST	/api/v1/events	ADMIN or ORGANIZER	Create an event
+GET	/api/v1/admin/audit-logs	ADMIN	Retrieve the latest 100 administrative and event-management audit records
 
 
 Other authentication, user-management, editing, and cancellation routes depend on the current backend route definitions. Check backend/src/routes/ for their exact methods and paths.
