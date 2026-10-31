@@ -2,6 +2,7 @@
 const { randomUUID } = require("crypto");
 const pool = require("../config/db");
 const { z } = require("zod");
+const { writeAudit } = require("../services/auditLogService");
 
 // Validation schemas
 const venueSchema = z.object({
@@ -34,32 +35,6 @@ function handleDuplicate(error, res, entity) {
     });
   }
   return null;
-}
-
-async function writeAudit(
-  connection,
-  adminId,
-  action,
-  entityType,
-  entityId,
-  oldValues,
-  newValues
-) {
-  await connection.execute(
-    `INSERT INTO admin_audit_logs
-     (audit_id, admin_id, action, entity_type, entity_id,
-      old_values, new_values)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      randomUUID(),
-      adminId,
-      action,
-      entityType,
-      entityId,
-      oldValues ? JSON.stringify(oldValues) : null,
-      newValues ? JSON.stringify(newValues) : null
-    ]
-  );
 }
 
 // =====================================================
@@ -127,7 +102,7 @@ async function createVenue(req, res, next) {
       "VENUE",
       venueId,
       null,
-      venue
+      { fields: ["venueName"] }
     );
 
     await connection.commit();
@@ -197,8 +172,8 @@ async function updateVenue(req, res, next) {
       "UPDATE_VENUE",
       "VENUE",
       req.params.id,
-      oldVenue,
-      venue
+      null,
+      { changedFields: ["venueName"] }
     );
 
     await connection.commit();
@@ -350,7 +325,7 @@ async function createCategory(req, res, next) {
       "CATEGORY",
       categoryId,
       null,
-      category
+      { fields: ["categoryName"] }
     );
 
     await connection.commit();
@@ -419,8 +394,8 @@ async function updateCategory(req, res, next) {
       "UPDATE_CATEGORY",
       "CATEGORY",
       req.params.id,
-      oldCategory,
-      category
+      null,
+      { changedFields: ["categoryName"] }
     );
 
     await connection.commit();
@@ -615,8 +590,8 @@ async function updateConfiguration(req, res, next) {
       existing.length ? "UPDATE_CONFIGURATION" : "CREATE_CONFIGURATION",
       "CONFIGURATION",
       configKey,
-      oldValues,
-      newValues
+      oldValues && { configKey },
+      { configKey }
     );
 
     await connection.commit();
@@ -636,7 +611,6 @@ async function updateConfiguration(req, res, next) {
     if (connection) connection.release();
   }
 }
-
 
 module.exports = {
   getVenues,

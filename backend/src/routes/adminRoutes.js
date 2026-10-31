@@ -18,11 +18,14 @@ const {
   getConfigurations,
   updateConfiguration
 } = require("../controllers/adminController");
+const { getAuditLogs } = require("../controllers/auditController");
 
 const router = express.Router();
 
 // All administrative routes require an active ADMIN account.
 router.use(authenticateToken, authorizeRoles("ADMIN"));
+
+router.get("/audit-logs", getAuditLogs);
 
 // Venue management
 router.get("/venues", getVenues);
