@@ -152,3 +152,5 @@ Security Notes
 - Configure HTTPS and production security settings before deployment.
 Current Scope
 This README documents EMS-F-002 through EMS-F-005. The current database model does not distinguish unpublished or draft events.
+
+Non-functional requirements NF-001 through NF-004, including performance/load-test instructions, availability measurement assumptions, and privacy/security controls, are documented in [docs/NON_FUNCTIONAL_REQUIREMENTS.md](./docs/NON_FUNCTIONAL_REQUIREMENTS.md).
