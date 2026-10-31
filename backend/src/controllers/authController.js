@@ -4,6 +4,7 @@ const { registerSchema } = require("../validators/authValidators");
 const { loginSchema } = require("../validators/authValidators");
 const jwt = require("jsonwebtoken");
 const { writeAudit } = require("../services/auditLogService");
+const { comparePassword } = require("../services/passwordComparisonPool");
 
 async function register(req, res, next) {
   const parsed = registerSchema.safeParse(req.body);
@@ -110,12 +111,14 @@ async function login(req, res, next) {
     const password = parsed.data.password;
 
     const [users] = await pool.execute(
-  `SELECT user_id, full_name, email, password_hash, account_status
-   FROM users
-   WHERE email = ?
-   LIMIT 1`,
-  [email]
-);
+      `SELECT u.user_id, u.full_name, u.email, u.password_hash,
+              u.account_status, r.role_name
+       FROM users u
+       LEFT JOIN user_roles ur ON ur.user_id = u.user_id
+       LEFT JOIN roles r ON r.role_id = ur.role_id
+       WHERE u.email = ?`,
+      [email]
+    );
 
     if (users.length === 0) {
       return res.status(401).json({
@@ -133,10 +136,7 @@ if (user.account_status !== "ACTIVE") {
   });
 }
 
-const passwordMatches = await bcrypt.compare(
-  password,
-  user.password_hash
-);
+const passwordMatches = await comparePassword(password, user.password_hash);
 
     if (!passwordMatches) {
       return res.status(401).json({
@@ -145,15 +145,9 @@ const passwordMatches = await bcrypt.compare(
       });
     }
 
-    const [roles] = await pool.execute(
-      `SELECT r.role_name
-       FROM roles r
-       JOIN user_roles ur ON r.role_id = ur.role_id
-       WHERE ur.user_id = ?`,
-      [user.user_id]
-    );
-
-    const roleNames = roles.map(role => role.role_name);
+    const roleNames = [...new Set(
+      users.map(row => row.role_name).filter(roleName => typeof roleName === "string")
+    )];
 
     const token = jwt.sign(
       {
